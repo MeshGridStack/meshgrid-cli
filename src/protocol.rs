@@ -131,6 +131,7 @@ pub struct DeviceInfo {
     pub public_key: [u8; 32],
     pub node_hash: u8,
     pub firmware_version: Option<String>,
+    pub mode: Option<String>,
     pub freq_mhz: f32,
     pub tx_power_dbm: i8,
 }
@@ -144,6 +145,7 @@ pub struct DeviceConfig {
     pub bandwidth_khz: u32,
     pub spreading_factor: u8,
     pub coding_rate: u8,
+    pub preamble_len: u16,
 }
 
 /// Neighbor entry.
@@ -481,6 +483,27 @@ impl Protocol {
             Response::Error(e) => bail!("Device error: {}", e),
             _ => bail!("Unexpected response to TELEMETRY"),
         }
+    }
+
+    /// Get log entries (reads multiple lines until "OK").
+    pub async fn get_log(&mut self) -> Result<Vec<String>> {
+        // Send LOG command
+        self.port.write_line("LOG").await?;
+
+        // Read all log lines until we see "OK"
+        let mut logs = Vec::new();
+        loop {
+            if let Some(line) = self.port.read_line_timeout(CMD_TIMEOUT).await? {
+                if line == "OK" {
+                    break;
+                }
+                logs.push(line);
+            } else {
+                bail!("Timeout waiting for log entries");
+            }
+        }
+
+        Ok(logs)
     }
 
     /// Receive a raw packet (waits for incoming packet).

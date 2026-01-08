@@ -30,6 +30,7 @@ impl Device {
             public_key: info.public_key,
             node_hash: info.node_hash,
             firmware_version: info.firmware_version,
+            mode: info.mode,
             freq_mhz: info.freq_mhz,
             tx_power_dbm: info.tx_power_dbm,
         })
@@ -45,6 +46,8 @@ impl Device {
             tx_power_dbm: config.tx_power_dbm,
             bandwidth_khz: config.bandwidth_khz,
             spreading_factor: config.spreading_factor,
+            coding_rate: config.coding_rate,
+            preamble_len: config.preamble_len,
         })
     }
 
@@ -66,6 +69,20 @@ impl Device {
     /// Set radio preset.
     pub async fn set_preset(&mut self, preset: &str) -> Result<()> {
         let cmd = format!("SET PRESET {}", preset.to_uppercase());
+        self.protocol.command(&cmd).await?;
+        Ok(())
+    }
+
+    /// Set bandwidth.
+    pub async fn set_bandwidth(&mut self, bandwidth_khz: f32) -> Result<()> {
+        let cmd = format!("SET BW {}", bandwidth_khz);
+        self.protocol.command(&cmd).await?;
+        Ok(())
+    }
+
+    /// Set spreading factor.
+    pub async fn set_spreading_factor(&mut self, sf: u8) -> Result<()> {
+        let cmd = format!("SET SF {}", sf);
         self.protocol.command(&cmd).await?;
         Ok(())
     }
@@ -157,6 +174,18 @@ impl Device {
         Ok(())
     }
 
+    /// Send a local advertisement (ROUTE_DIRECT).
+    pub async fn send_advert_local(&mut self) -> Result<()> {
+        self.protocol.command("ADVERT LOCAL").await?;
+        Ok(())
+    }
+
+    /// Send a flood advertisement (ROUTE_FLOOD).
+    pub async fn send_advert_flood(&mut self) -> Result<()> {
+        self.protocol.command("ADVERT FLOOD").await?;
+        Ok(())
+    }
+
     /// Send a raw packet.
     pub async fn send_packet(&mut self, packet: &[u8]) -> Result<()> {
         self.protocol.send_packet(packet).await
@@ -191,7 +220,10 @@ pub struct DeviceInfo {
     pub public_key: [u8; 32],
     pub node_hash: u8,
     pub firmware_version: Option<String>,
+    pub mode: Option<String>,
+    #[allow(dead_code)]
     pub freq_mhz: f32,
+    #[allow(dead_code)]
     pub tx_power_dbm: i8,
 }
 
@@ -203,6 +235,8 @@ pub struct DeviceConfig {
     pub tx_power_dbm: i8,
     pub bandwidth_khz: u32,
     pub spreading_factor: u8,
+    pub coding_rate: u8,
+    pub preamble_len: u16,
 }
 
 /// Neighbor information.

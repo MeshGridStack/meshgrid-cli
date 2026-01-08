@@ -1,156 +1,118 @@
-# meshgrid-cli
+# MeshGrid CLI
 
-Command line interface for meshgrid mesh networking.
+Command-line tool for managing MeshGrid LoRa mesh networking devices over USB serial.
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Rust](https://img.shields.io/badge/rust-1.70%2B-orange.svg)
+
+## What It Does
+
+- Configure and manage MeshGrid devices over USB
+- Send/receive messages across the mesh network
+- Monitor mesh traffic in real-time
+- View network topology and signal quality
+- Flash firmware to 80+ supported boards
+- Get telemetry (battery, GPS, sensors)
 
 ## Installation
-
-### From Source (Development)
 
 ```bash
 git clone https://github.com/BetterInc/meshgrid-cli
 cd meshgrid-cli
-cargo install --path .
+cargo build --release
+# Binary at: ./target/release/meshgrid-cli
 ```
 
-### From crates.io (Coming Soon)
-
+Or install globally:
 ```bash
-cargo install meshgrid-cli
+cargo install --path .
 ```
 
 ## Quick Start
 
 ```bash
 # List connected devices
-meshgrid ports
+meshgrid-cli ports
 
-# Get device info
-meshgrid -p /dev/ttyUSB0 info
+# Get device info (auto-detects port)
+meshgrid-cli info
 
 # Send a message
-meshgrid send "Hello mesh!"
+meshgrid-cli send "Hello mesh!"
 
-# Monitor traffic
-meshgrid monitor
+# Monitor mesh traffic
+meshgrid-cli monitor
 
-# Interactive UI
-meshgrid ui
+# View neighbors
+meshgrid-cli neighbors
+
+# Get telemetry
+meshgrid-cli telemetry
 ```
 
-## Flashing Firmware
-
-### For Users (Downloads from GitHub)
+## Common Commands
 
 ```bash
-# Flash latest firmware
-meshgrid flash heltec-v3
-
-# Flash specific version
-meshgrid flash heltec-v3 --version 1.0.0
-
-# Flash and monitor
-meshgrid flash heltec-v3 --monitor
+meshgrid-cli ports                    # List serial ports
+meshgrid-cli info                     # Device information
+meshgrid-cli config                   # Show configuration
+meshgrid-cli config name "my-node"    # Set device name
+meshgrid-cli send "message"           # Broadcast message
+meshgrid-cli send --to node "msg"     # Direct message
+meshgrid-cli monitor                  # Monitor traffic
+meshgrid-cli neighbors                # View neighbor table
+meshgrid-cli stats                    # Performance stats
+meshgrid-cli telemetry                # Device telemetry
+meshgrid-cli flash heltec-v3          # Flash firmware
+meshgrid-cli reboot                   # Reboot device
 ```
 
-### For Developers (Local Build)
+Use `meshgrid-cli --help` or `meshgrid-cli <command> --help` for more options.
 
-If you have meshgrid-firmware cloned locally:
+## Firmware Flashing
+
+Supports 80+ boards including Heltec, LilyGo, RAK, Seeed, and more.
 
 ```bash
-# Clone all repos
-git clone https://github.com/BetterInc/meshgrid-core
-git clone https://github.com/BetterInc/meshgrid-cli
-git clone https://github.com/BetterInc/meshgrid-firmware
+# Detect boards
+meshgrid-cli flash --detect
 
-# Install PlatformIO
-pip install platformio
+# Flash firmware
+meshgrid-cli flash heltec-v3
+meshgrid-cli flash lilygo-t3s3
+meshgrid-cli flash rak4631
 
-# Flash from local build
-meshgrid flash heltec-v3 --local ../meshgrid-firmware
-
-# Or use PlatformIO directly
-cd meshgrid-firmware
-pio run -e heltec_v3 -t upload -t monitor
+# See all boards
+meshgrid-cli flash --help
 ```
 
-## Supported Boards
+Requires [PlatformIO](https://platformio.org/): `pip install platformio`
 
-| Board | Command |
-|-------|---------|
-| Heltec V3 | `meshgrid flash heltec-v3` |
-| Heltec V4 | `meshgrid flash heltec-v4` |
-| LilyGo T3S3 | `meshgrid flash t3s3` |
-| LilyGo T-Beam | `meshgrid flash tbeam` |
-| LilyGo T-Echo | `meshgrid flash techo` |
-| RAK4631 | `meshgrid flash rak4631` |
-| Station G2 | `meshgrid flash station-g2` |
+## Documentation
 
-## Commands
+- Full command reference: `meshgrid-cli --help`
+- Examples and tutorials: See `docs/` folder
+- Protocol specification: `docs/PROTOCOL.md`
 
-```
-meshgrid <COMMAND>
+## Troubleshooting
 
-Commands:
-  ports       List available serial ports
-  info        Show device info
-  send        Send a message
-  monitor     Monitor mesh traffic
-  ui          Interactive terminal UI
-  flash       Flash firmware to device
-  config      Get/set device configuration
-  neighbors   Show neighbor table
-  trace       Trace route to a node
-  reboot      Reboot the device
-  telemetry   Show device telemetry
-
-Options:
-  -p, --port <PORT>    Serial port (auto-detect if not specified)
-  -b, --baud <BAUD>    Baud rate [default: 115200]
-  -v, --verbose        Enable verbose logging
-```
-
-## Configuration
-
-Config file: `~/.config/meshgrid/config.toml`
-
-```toml
-[device]
-default_port = "/dev/ttyUSB0"
-
-[lora]
-frequency = 868.0
-spreading_factor = 9
-
-[firmware]
-# For users: download from GitHub releases
-source = "github"
-repo = "BetterInc/meshgrid-firmware"
-
-# For developers: use local path
-# source = "local"
-# path = "/home/user/meshgrid-firmware"
-```
-
-## Development Workflow
-
+**Permission denied (Linux)**:
 ```bash
-# 1. Clone all repositories
-mkdir meshgrid && cd meshgrid
-git clone https://github.com/BetterInc/meshgrid-core
-git clone https://github.com/BetterInc/meshgrid-cli
-git clone https://github.com/BetterInc/meshgrid-firmware
+sudo usermod -a -G dialout $USER
+# Log out and back in
+```
 
-# 2. Build CLI
-cd meshgrid-cli
-cargo build --release
-
-# 3. Flash device (local firmware)
-./target/release/meshgrid flash heltec-v3 --local ../meshgrid-firmware
-
-# 4. Monitor
-./target/release/meshgrid monitor
+**Device not found**:
+```bash
+meshgrid-cli ports  # List available ports
+meshgrid-cli -p /dev/ttyUSB0 info  # Specify port manually
 ```
 
 ## License
 
 MIT
+
+## Related
+
+- [meshgrid-firmware](https://github.com/BetterInc/meshgrid-firmware) - Device firmware
+- [meshgrid-core](https://github.com/BetterInc/meshgrid-core) - Core library

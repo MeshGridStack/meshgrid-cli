@@ -8,7 +8,7 @@ mod protocol;
 mod device;
 mod ui;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -59,7 +59,7 @@ enum Commands {
     /// Get/set device configuration
     Config {
         #[command(subcommand)]
-        action: ConfigAction,
+        action: Option<ConfigAction>,
     },
 
     /// Show neighbor table
@@ -94,6 +94,27 @@ enum Commands {
         watch: bool,
     },
 
+    /// Get detailed performance statistics
+    Stats,
+
+    /// Set device mode (client, repeater, or room)
+    Mode {
+        /// Mode to set
+        mode: String,
+    },
+
+    /// Manage device time
+    Time {
+        #[command(subcommand)]
+        action: Option<TimeAction>,
+    },
+
+    /// View/manage event log
+    Log {
+        #[command(subcommand)]
+        action: Option<LogAction>,
+    },
+
     /// Flash firmware to a device
     Flash {
         /// Board type to flash (auto-detect if not specified)
@@ -111,6 +132,17 @@ enum Commands {
         /// List detected devices without flashing
         #[arg(long)]
         detect: bool,
+    },
+
+    /// Send advertisement packets (local + flood)
+    Advert {
+        /// Send only local advertisement (ROUTE_DIRECT)
+        #[arg(short, long)]
+        local: bool,
+
+        /// Send only flood advertisement (ROUTE_FLOOD)
+        #[arg(short, long)]
+        flood: bool,
     },
 }
 
@@ -295,6 +327,33 @@ enum ConfigAction {
     Power { dbm: i8 },
     /// Set radio preset (EU, US, US_FAST, LONG_RANGE)
     Preset { preset: String },
+    /// Set bandwidth in kHz
+    Bw { bandwidth_khz: f32 },
+    /// Set spreading factor
+    Sf { spreading_factor: u8 },
+}
+
+#[derive(Subcommand)]
+enum TimeAction {
+    /// Sync device time with computer's current time
+    Sync,
+    /// Set device time to specific value
+    Set {
+        /// Time string: "YYYY-MM-DD HH:MM:SS"
+        time: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum LogAction {
+    /// View log buffer (default)
+    Show,
+    /// Enable logging
+    Enable,
+    /// Disable logging
+    Disable,
+    /// Clear log buffer
+    Clear,
 }
 
 #[tokio::main]
@@ -356,9 +415,29 @@ async fn main() -> Result<()> {
             let port = require_port(&cli.port)?;
             cmd_telemetry(&port, cli.baud, watch).await?;
         }
+        Commands::Stats => {
+            let port = require_port(&cli.port)?;
+            cmd_stats(&port, cli.baud).await?;
+        }
+        Commands::Mode { mode } => {
+            let port = require_port(&cli.port)?;
+            cmd_mode(&port, cli.baud, &mode).await?;
+        }
+        Commands::Time { action } => {
+            let port = require_port(&cli.port)?;
+            cmd_time(&port, cli.baud, action).await?;
+        }
+        Commands::Log { action } => {
+            let port = require_port(&cli.port)?;
+            cmd_log(&port, cli.baud, action).await?;
+        }
         Commands::Flash { board, monitor, local, detect } => {
             let port = cli.port.clone();
             cmd_flash(board, port.as_deref(), monitor, local.as_deref(), detect).await?;
+        }
+        Commands::Advert { local, flood } => {
+            let port = require_port(&cli.port)?;
+            cmd_advert(&port, cli.baud, local, flood).await?;
         }
     }
 
@@ -437,14 +516,22 @@ fn cmd_list_ports() -> Result<()> {
 async fn cmd_info(port: &str, baud: u32) -> Result<()> {
     let mut dev = device::Device::connect(port, baud).await?;
     let info = dev.get_info().await?;
+    let config = dev.get_config().await?;
 
     println!("Device Information:");
     println!("  Name:       {}", info.name.unwrap_or_else(|| "<unnamed>".into()));
-    println!("  Public Key: {}", hex::encode(&info.public_key[..8]));
+    println!("  Mode:       {}", info.mode.unwrap_or_else(|| "unknown".into()));
+    println!("  Public Key: {}", hex::encode(&info.public_key));
     println!("  Node Hash:  0x{:02x}", info.node_hash);
     println!("  Firmware:   {}", info.firmware_version.unwrap_or_else(|| "unknown".into()));
-    println!("  Frequency:  {:.2} MHz", info.freq_mhz);
-    println!("  TX Power:   {} dBm", info.tx_power_dbm);
+    println!();
+    println!("Radio Configuration:");
+    println!("  Frequency:  {:.3} MHz", config.freq_mhz);
+    println!("  TX Power:   {} dBm", config.tx_power_dbm);
+    println!("  Bandwidth:  {} kHz", config.bandwidth_khz);
+    println!("  SF:         {}", config.spreading_factor);
+    println!("  CR:         4/{}", config.coding_rate);
+    println!("  Preamble:   {}", config.preamble_len);
 
     Ok(())
 }
@@ -498,10 +585,10 @@ async fn cmd_ui(port: &str, baud: u32) -> Result<()> {
     ui::run(port, baud).await
 }
 
-async fn cmd_config(port: &str, baud: u32, action: ConfigAction) -> Result<()> {
+async fn cmd_config(port: &str, baud: u32, action: Option<ConfigAction>) -> Result<()> {
     let mut dev = device::Device::connect(port, baud).await?;
 
-    match action {
+    match action.unwrap_or(ConfigAction::Show) {
         ConfigAction::Show => {
             let config = dev.get_config().await?;
             println!("Device Configuration:");
@@ -526,6 +613,14 @@ async fn cmd_config(port: &str, baud: u32, action: ConfigAction) -> Result<()> {
         ConfigAction::Preset { preset } => {
             dev.set_preset(&preset).await?;
             println!("Preset applied: {}", preset);
+        }
+        ConfigAction::Bw { bandwidth_khz } => {
+            dev.set_bandwidth(bandwidth_khz).await?;
+            println!("Bandwidth set to: {} kHz", bandwidth_khz);
+        }
+        ConfigAction::Sf { spreading_factor } => {
+            dev.set_spreading_factor(spreading_factor).await?;
+            println!("Spreading factor set to: SF{}", spreading_factor);
         }
     }
 
@@ -572,6 +667,33 @@ async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
     let mut dev = device::Device::connect(port, baud).await?;
     dev.reboot().await?;
     println!("Device rebooting...");
+    Ok(())
+}
+
+async fn cmd_advert(port: &str, baud: u32, local_only: bool, flood_only: bool) -> Result<()> {
+    let mut dev = device::Device::connect(port, baud).await?;
+
+    // Determine which advertisements to send
+    let send_local = !flood_only; // Send local unless flood-only is specified
+    let send_flood = !local_only; // Send flood unless local-only is specified
+
+    // If neither flag is set, send both (default behavior)
+    let send_both = !local_only && !flood_only;
+
+    if send_local || send_both {
+        dev.send_advert_local().await?;
+        println!("Local advertisement (ROUTE_DIRECT) sent");
+    }
+
+    if send_flood || send_both {
+        // Small delay between commands to ensure first packet completes
+        if send_both {
+            tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+        }
+        dev.send_advert_flood().await?;
+        println!("Flood advertisement (ROUTE_FLOOD) sent");
+    }
+
     Ok(())
 }
 
@@ -669,7 +791,301 @@ async fn cmd_telemetry(port: &str, baud: u32, watch: bool) -> Result<()> {
     Ok(())
 }
 
-/// USB VID/PID to board type mapping
+async fn cmd_stats(port: &str, baud: u32) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    // Request stats from device
+    match proto.command("STATS").await? {
+        protocol::Response::Json(json) => {
+            // Format stats nicely
+            println!("╔══════════════════════════════════════════╗");
+            println!("║        MESHGRID PERFORMANCE STATS        ║");
+            println!("╚══════════════════════════════════════════╝");
+
+            // Hardware
+            if let Some(hw) = json.get("hardware") {
+                println!("\n📟 Hardware:");
+                if let Some(board) = hw.get("board").and_then(|v| v.as_str()) {
+                    println!("  Board:  {}", board);
+                }
+                if let Some(chip) = hw.get("chip").and_then(|v| v.as_str()) {
+                    let mhz = hw.get("cpu_mhz").and_then(|v| v.as_u64()).unwrap_or(0);
+                    let cores = hw.get("cores").and_then(|v| v.as_u64()).unwrap_or(0);
+                    println!("  CPU:    {} @ {} MHz ({} cores)", chip, mhz, cores);
+                }
+            }
+
+            // Memory
+            if let Some(mem) = json.get("memory") {
+                println!("\n💾 Memory:");
+                let ram_used = mem.get("ram_used_kb").and_then(|v| v.as_u64()).unwrap_or(0);
+                let ram_total = mem.get("ram_total_kb").and_then(|v| v.as_u64()).unwrap_or(0);
+                let ram_pct = if ram_total > 0 { (ram_used * 100) / ram_total } else { 0 };
+                println!("  RAM:    {} / {} KB ({:.1}%)", ram_used, ram_total, ram_pct as f64);
+
+                if let Some(heap) = mem.get("heap_free_kb").and_then(|v| v.as_u64()) {
+                    println!("  Heap:   {} KB free", heap);
+                }
+
+                let flash_used = mem.get("flash_used_kb").and_then(|v| v.as_u64()).unwrap_or(0);
+                let flash_total = mem.get("flash_total_kb").and_then(|v| v.as_u64()).unwrap_or(0);
+                let flash_pct = if flash_total > 0 { (flash_used * 100) / flash_total } else { 0 };
+                println!("  Flash:  {} / {} KB ({:.1}%)", flash_used, flash_total, flash_pct as f64);
+            }
+
+            // Packets
+            if let Some(packets) = json.get("packets") {
+                println!("\n📡 Packets:");
+                println!("  RX:     {}", packets.get("rx").and_then(|v| v.as_u64()).unwrap_or(0));
+                println!("  TX:     {}", packets.get("tx").and_then(|v| v.as_u64()).unwrap_or(0));
+                println!("  FWD:    {}", packets.get("fwd").and_then(|v| v.as_u64()).unwrap_or(0));
+                println!("  DROP:   {}", packets.get("dropped").and_then(|v| v.as_u64()).unwrap_or(0));
+                println!("  DUP:    {}", packets.get("duplicates").and_then(|v| v.as_u64()).unwrap_or(0));
+            }
+
+            // Neighbors
+            if let Some(neighbors) = json.get("neighbors") {
+                let total = neighbors.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
+                let clients = neighbors.get("clients").and_then(|v| v.as_u64()).unwrap_or(0);
+                let repeaters = neighbors.get("repeaters").and_then(|v| v.as_u64()).unwrap_or(0);
+                let rooms = neighbors.get("rooms").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("\n🔗 Neighbors: {}", total);
+                if total > 0 {
+                    println!("  Clients:   {}", clients);
+                    println!("  Repeaters: {}", repeaters);
+                    println!("  Rooms:     {}", rooms);
+                }
+            }
+
+            // Radio
+            if let Some(radio) = json.get("radio") {
+                println!("\n📻 Radio:");
+                if let Some(freq) = radio.get("freq_mhz").and_then(|v| v.as_f64()) {
+                    println!("  Freq:   {:.2} MHz", freq);
+                }
+                if let Some(bw) = radio.get("bandwidth_khz").and_then(|v| v.as_f64()) {
+                    println!("  BW:     {:.1} kHz", bw);
+                }
+                if let Some(sf) = radio.get("spreading_factor").and_then(|v| v.as_u64()) {
+                    println!("  SF:     {}", sf);
+                }
+                if let Some(power) = radio.get("tx_power_dbm").and_then(|v| v.as_i64()) {
+                    println!("  Power:  {} dBm", power);
+                }
+            }
+
+            // Power
+            if let Some(power) = json.get("power") {
+                println!("\n🔋 Power:");
+                let pct = power.get("battery_pct").and_then(|v| v.as_u64()).unwrap_or(0);
+                let mv = power.get("battery_mv").and_then(|v| v.as_u64()).unwrap_or(0);
+                println!("  Battery:  {}% ({:.2}V)", pct, mv as f64 / 1000.0);
+
+                let usb = power.get("usb_power").and_then(|v| v.as_bool()).unwrap_or(false);
+                let charging = power.get("charging").and_then(|v| v.as_bool()).unwrap_or(false);
+                let sleep = power.get("sleep_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+
+                println!("  USB:      {}", if usb { "Yes" } else { "No" });
+                println!("  Charging: {}", if charging { "Yes" } else { "No" });
+                println!("  Sleep:    {}", if sleep { "Enabled" } else { "Disabled" });
+            }
+
+            // Features
+            if let Some(features) = json.get("features") {
+                println!("\n⚡ Optimizations:");
+                if features.get("hw_aes").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    println!("  ✓ Hardware AES-128");
+                } else {
+                    println!("  ✗ Hardware AES-128 (software)");
+                }
+                if features.get("hw_sha256").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    println!("  ✓ Hardware SHA-256");
+                } else {
+                    println!("  ✗ Hardware SHA-256 (software)");
+                }
+                if features.get("priority_scheduling").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    println!("  ✓ Priority Scheduling");
+                }
+                if features.get("airtime_budget").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    println!("  ✓ Airtime Budget (33%)");
+                }
+                if let Some(queue_size) = features.get("tx_queue_size").and_then(|v| v.as_u64()) {
+                    println!("  ✓ TX Queue ({} slots)", queue_size);
+                }
+                if features.get("secret_caching").and_then(|v| v.as_bool()).unwrap_or(false) {
+                    println!("  ✓ Shared Secret Caching");
+                }
+            }
+
+            // Firmware
+            if let Some(fw) = json.get("firmware") {
+                println!("\n🔧 Firmware:");
+                if let Some(ver) = fw.get("version").and_then(|v| v.as_str()) {
+                    println!("  Version: {}", ver);
+                }
+                if let Some(mode) = fw.get("mode").and_then(|v| v.as_str()) {
+                    println!("  Mode:    {}", mode);
+                }
+                if let Some(uptime) = fw.get("uptime_secs").and_then(|v| v.as_u64()) {
+                    let hours = uptime / 3600;
+                    let mins = (uptime % 3600) / 60;
+                    let secs = uptime % 60;
+                    if hours > 0 {
+                        println!("  Uptime:  {}h {}m {}s", hours, mins, secs);
+                    } else if mins > 0 {
+                        println!("  Uptime:  {}m {}s", mins, secs);
+                    } else {
+                        println!("  Uptime:  {}s", secs);
+                    }
+                }
+            }
+
+            // Temperature
+            if let Some(temp) = json.get("temperature") {
+                if let Some(cpu_temp) = temp.get("cpu_c").and_then(|v| v.as_f64()) {
+                    println!("\n🌡️  CPU Temp: {:.1}°C", cpu_temp);
+                }
+            }
+
+            println!();
+        }
+        protocol::Response::Error(e) => bail!("Device error: {}", e),
+        protocol::Response::Ok(data) => {
+            eprintln!("DEBUG: Got OK response: {:?}", data);
+            bail!("Unexpected OK response to STATS (expected JSON)")
+        }
+    }
+
+    Ok(())
+}
+
+async fn cmd_mode(port: &str, baud: u32, mode: &str) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    let mode_lower = mode.to_lowercase();
+    let valid_modes = ["client", "repeater", "room"];
+
+    if !valid_modes.contains(&mode_lower.as_str()) {
+        bail!("Invalid mode '{}'. Valid modes: client, repeater, room", mode);
+    }
+
+    let command = format!("/mode {}", mode_lower);
+    match proto.command(&command).await? {
+        protocol::Response::Ok(msg) => {
+            if let Some(m) = msg {
+                println!("{}", m);
+            } else {
+                println!("Mode set to: {}", mode_lower.to_uppercase());
+            }
+            Ok(())
+        }
+        protocol::Response::Error(e) => bail!("Failed to set mode: {}", e),
+        _ => bail!("Unexpected response to mode command"),
+    }
+}
+
+async fn cmd_time(port: &str, baud: u32, action: Option<TimeAction>) -> Result<()> {
+    use chrono::Local;
+
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    let action = action.unwrap_or(TimeAction::Sync);
+
+    let time_str = match action {
+        TimeAction::Sync => {
+            // Sync with computer's current time
+            Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+        }
+        TimeAction::Set { time } => {
+            // Use provided time string
+            time
+        }
+    };
+
+    let command = format!("/time {}", time_str);
+    match proto.command(&command).await? {
+        protocol::Response::Ok(msg) => {
+            if let Some(m) = msg {
+                println!("{}", m);
+            } else {
+                println!("Time synced: {}", time_str);
+            }
+            Ok(())
+        }
+        protocol::Response::Error(e) => bail!("Failed to set time: {}", e),
+        _ => bail!("Unexpected response to time command"),
+    }
+}
+
+async fn cmd_log(port: &str, baud: u32, action: Option<LogAction>) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    let action = action.unwrap_or(LogAction::Show);
+
+    match action {
+        LogAction::Show => {
+            // Use special get_log method that reads multiple lines
+            let logs = proto.get_log().await?;
+            for log in logs {
+                println!("{}", log);
+            }
+        }
+        LogAction::Enable => {
+            match proto.command("LOG ENABLE").await? {
+                protocol::Response::Ok(data) => {
+                    if let Some(output) = data {
+                        println!("{}", output);
+                    }
+                }
+                protocol::Response::Error(e) => {
+                    bail!("Device error: {}", e);
+                }
+                _ => {
+                    bail!("Unexpected response to LOG ENABLE");
+                }
+            }
+        }
+        LogAction::Disable => {
+            match proto.command("LOG DISABLE").await? {
+                protocol::Response::Ok(data) => {
+                    if let Some(output) = data {
+                        println!("{}", output);
+                    }
+                }
+                protocol::Response::Error(e) => {
+                    bail!("Device error: {}", e);
+                }
+                _ => {
+                    bail!("Unexpected response to LOG DISABLE");
+                }
+            }
+        }
+        LogAction::Clear => {
+            match proto.command("LOG CLEAR").await? {
+                protocol::Response::Ok(data) => {
+                    if let Some(output) = data {
+                        println!("{}", output);
+                    }
+                }
+                protocol::Response::Error(e) => {
+                    bail!("Device error: {}", e);
+                }
+                _ => {
+                    bail!("Unexpected response to LOG CLEAR");
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// USB VID/PID to board type mapping (prepared for future auto-detection)
+#[allow(dead_code)]
 struct UsbDeviceInfo {
     vid: u16,
     pid: u16,
@@ -677,6 +1093,7 @@ struct UsbDeviceInfo {
     name: &'static str,
 }
 
+#[allow(dead_code)]
 const USB_DEVICE_MAP: &[UsbDeviceInfo] = &[
     // ESP32-S3 native USB (Heltec V3/V4, T3S3, T-Deck, Station G2, etc.)
     UsbDeviceInfo { vid: 0x303a, pid: 0x1001, board: BoardType::HeltecV3, name: "ESP32-S3 (Heltec V3/V4, T3S3, etc.)" },

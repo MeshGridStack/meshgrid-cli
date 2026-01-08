@@ -115,4 +115,3 @@ MIT
 ## Related
 
 - [meshgrid-firmware](https://github.com/BetterInc/meshgrid-firmware) - Device firmware
-- [meshgrid-core](https://github.com/BetterInc/meshgrid-core) - Core library

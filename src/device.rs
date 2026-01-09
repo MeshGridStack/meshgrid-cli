@@ -110,7 +110,23 @@ impl Device {
 
     /// Send a direct message.
     pub async fn send_direct(&mut self, dest: &str, message: &str) -> Result<()> {
-        self.protocol.send_direct(dest, message).await
+        // If dest is not a hash (0x...), look it up in neighbors
+        let resolved_dest = if !dest.starts_with("0x") {
+            // Try to find neighbor by name
+            let neighbors = self.get_neighbors().await?;
+            if let Some(neighbor) = neighbors.iter().find(|n| {
+                n.name.as_ref().map(|name| name.as_str()) == Some(dest)
+            }) {
+                format!("0x{:x}", neighbor.node_hash)
+            } else {
+                // Not found in neighbors, try sending anyway (maybe it's a partial match)
+                dest.to_string()
+            }
+        } else {
+            dest.to_string()
+        };
+
+        self.protocol.send_direct(&resolved_dest, message).await
     }
 
     /// Trace route to a target.

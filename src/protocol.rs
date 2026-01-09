@@ -497,7 +497,11 @@ impl Protocol {
                 if line == "OK" {
                     break;
                 }
-                logs.push(line);
+                // Sanitize line for safe piping (replace control chars with .)
+                let sanitized = line.chars()
+                    .map(|c| if c.is_control() && c != '\n' && c != '\r' { '.' } else { c })
+                    .collect::<String>();
+                logs.push(sanitized);
             } else {
                 bail!("Timeout waiting for log entries");
             }

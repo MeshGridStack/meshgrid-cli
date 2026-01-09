@@ -115,6 +115,18 @@ enum Commands {
         action: Option<LogAction>,
     },
 
+    /// View received messages inbox
+    Messages {
+        #[command(subcommand)]
+        action: Option<MessagesAction>,
+    },
+
+    /// Manage channels
+    Channels {
+        #[command(subcommand)]
+        action: Option<ChannelsAction>,
+    },
+
     /// Flash firmware to a device
     Flash {
         /// Board type to flash (auto-detect if not specified)
@@ -144,6 +156,9 @@ enum Commands {
         #[arg(short, long)]
         flood: bool,
     },
+
+    /// Rotate device identity (generate new keypair)
+    RotateIdentity,
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -356,6 +371,20 @@ enum LogAction {
     Clear,
 }
 
+#[derive(Subcommand)]
+enum MessagesAction {
+    /// View message inbox (default)
+    Show,
+    /// Clear message inbox
+    Clear,
+}
+
+#[derive(Subcommand)]
+enum ChannelsAction {
+    /// List all channels
+    List,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -431,6 +460,14 @@ async fn main() -> Result<()> {
             let port = require_port(&cli.port)?;
             cmd_log(&port, cli.baud, action).await?;
         }
+        Commands::Messages { action } => {
+            let port = require_port(&cli.port)?;
+            cmd_messages(&port, cli.baud, action).await?;
+        }
+        Commands::Channels { action } => {
+            let port = require_port(&cli.port)?;
+            cmd_channels(&port, cli.baud, action).await?;
+        }
         Commands::Flash { board, monitor, local, detect } => {
             let port = cli.port.clone();
             cmd_flash(board, port.as_deref(), monitor, local.as_deref(), detect).await?;
@@ -438,6 +475,10 @@ async fn main() -> Result<()> {
         Commands::Advert { local, flood } => {
             let port = require_port(&cli.port)?;
             cmd_advert(&port, cli.baud, local, flood).await?;
+        }
+        Commands::RotateIdentity => {
+            let port = require_port(&cli.port)?;
+            cmd_rotate_identity(&port, cli.baud).await?;
         }
     }
 
@@ -668,6 +709,115 @@ async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
     dev.reboot().await?;
     println!("Device rebooting...");
     Ok(())
+}
+
+async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    let action = action.unwrap_or(MessagesAction::Show);
+
+    match action {
+        MessagesAction::Show => {
+            match proto.command("MESSAGES").await? {
+                protocol::Response::Json(json) => {
+                    let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+
+                    if total == 0 {
+                        println!("No messages in inbox");
+                    } else if let Some(messages) = json.get("messages").and_then(|m| m.as_array()) {
+                        println!("Inbox ({} messages):\n", total);
+
+                        for msg in messages {
+                            let from_hash = msg.get("from_hash").and_then(|h| h.as_str()).unwrap_or("?");
+                            let from_name = msg.get("from_name").and_then(|n| n.as_str()).unwrap_or("?");
+                            let channel = msg.get("channel").and_then(|c| c.as_str()).unwrap_or("?");
+                            let decrypted = msg.get("decrypted").and_then(|d| d.as_bool()).unwrap_or(false);
+                            let text = msg.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                            let timestamp = msg.get("timestamp").and_then(|t| t.as_u64()).unwrap_or(0);
+
+                            let channel_str = match channel {
+                                "direct" => "DM".to_string(),
+                                "public" => "Public".to_string(),
+                                ch => format!("CH:{}", ch),
+                            };
+
+                            let lock = if decrypted { " " } else { "🔒" };
+
+                            println!("  [{}s] {} from {} ({}): {}",
+                                     timestamp / 1000,
+                                     lock,
+                                     from_name,
+                                     channel_str,
+                                     text);
+                        }
+                    }
+                }
+                protocol::Response::Error(e) => bail!("Device error: {}", e),
+                _ => bail!("Unexpected response to MESSAGES"),
+            }
+        }
+        MessagesAction::Clear => {
+            match proto.command("MESSAGES CLEAR").await? {
+                protocol::Response::Ok(msg) => {
+                    println!("{}", msg.unwrap_or_else(|| "Messages cleared".to_string()));
+                }
+                protocol::Response::Error(e) => bail!("Device error: {}", e),
+                _ => bail!("Unexpected response to MESSAGES CLEAR"),
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn cmd_channels(port: &str, baud: u32, action: Option<ChannelsAction>) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    let _action = action.unwrap_or(ChannelsAction::List);
+
+    match proto.command("CHANNELS").await? {
+        protocol::Response::Json(json) => {
+            let channels = json.get("channels").and_then(|c| c.as_array());
+            let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+
+            println!("Channels ({}):\n", total);
+
+            if let Some(channels) = channels {
+                for channel in channels {
+                    let name = channel.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                    let hash = channel.get("hash").and_then(|h| h.as_str()).unwrap_or("?");
+                    let builtin = channel.get("builtin").and_then(|b| b.as_bool()).unwrap_or(false);
+
+                    let tag = if builtin { "[builtin]" } else { "[custom]" };
+                    println!("  {} - {} {}", hash, name, tag);
+                }
+            }
+        }
+        protocol::Response::Error(e) => bail!("Device error: {}", e),
+        _ => bail!("Unexpected response to CHANNELS"),
+    }
+
+    Ok(())
+}
+
+async fn cmd_rotate_identity(port: &str, baud: u32) -> Result<()> {
+    let serial_port = serial::SerialPort::open(port, baud).await?;
+    let mut proto = protocol::Protocol::new(serial_port);
+
+    println!("WARNING: This will generate a new keypair and clear all encrypted data.");
+    println!("         Old messages and neighbor secrets will be deleted.");
+    println!("         Other nodes will need to re-discover your new identity.\n");
+
+    match proto.command("IDENTITY ROTATE").await? {
+        protocol::Response::Ok(msg) => {
+            println!("{}", msg.unwrap_or_else(|| "Identity rotated, device rebooting...".to_string()));
+            Ok(())
+        }
+        protocol::Response::Error(e) => bail!("Device error: {}", e),
+        _ => bail!("Unexpected response to IDENTITY ROTATE"),
+    }
 }
 
 async fn cmd_advert(port: &str, baud: u32, local_only: bool, flood_only: bool) -> Result<()> {

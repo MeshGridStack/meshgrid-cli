@@ -157,6 +157,7 @@ pub struct NeighborInfo {
     pub rssi: i16,
     pub snr: i8,
     pub last_seen_secs: u32,
+    pub firmware: Option<String>,
 }
 
 /// Trace result.
@@ -180,7 +181,10 @@ impl Protocol {
 
     /// Send a command and wait for response.
     pub async fn command(&mut self, cmd: &str) -> Result<Response> {
-        // Clear any pending data
+        // Send empty line first to cancel any partial command on device side
+        self.port.write(b"\n").await?;
+
+        // Clear any pending data/responses
         self.port.clear().await?;
 
         // Send command
@@ -192,32 +196,60 @@ impl Protocol {
 
     /// Read a response from the device.
     async fn read_response(&mut self) -> Result<Response> {
-        let line = match self.port.read_line_timeout(CMD_TIMEOUT).await? {
-            Some(line) => line,
-            None => bail!("Command timeout"),
-        };
+        // Loop to skip ESP32 debug output lines and boot messages
+        // Limit iterations to prevent infinite loops on stuck devices
+        const MAX_SKIP_LINES: usize = 50;
+        let mut skip_count = 0;
 
-        // Parse response
-        if line.starts_with("OK") {
-            let data = line.strip_prefix("OK").map(|s| s.trim().to_string());
-            let data = if data.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
-                None
-            } else {
-                data
+        loop {
+            if skip_count >= MAX_SKIP_LINES {
+                bail!("Too many unrecognized lines - device may be in a crash loop");
+            }
+            let line = match self.port.read_line_timeout(CMD_TIMEOUT).await? {
+                Some(line) => line,
+                None => bail!("Command timeout"),
             };
-            Ok(Response::Ok(data))
-        } else if line.starts_with("ERR") {
-            let msg = line.strip_prefix("ERR").unwrap_or(&line).trim().to_string();
-            Ok(Response::Error(msg))
-        } else if line.starts_with('{') || line.starts_with('[') {
-            let json: serde_json::Value = serde_json::from_str(&line)?;
-            Ok(Response::Json(json))
-        } else if line.starts_with("PKT") {
-            // Binary packet - treat as OK (actual packet reading done via recv_packet)
-            Ok(Response::Ok(Some(line)))
-        } else {
-            // Unknown response, treat as data
-            Ok(Response::Ok(Some(line)))
+
+            tracing::debug!("Raw response: {:?}", line);
+
+            // Skip ESP32-IDF debug output lines (format: "[  timestamp][level][component]...")
+            if line.starts_with('[') && !line.starts_with("[{") {
+                // Check if it looks like ESP32 debug output
+                if line.contains("][") && (line.contains("[E]") || line.contains("[W]") || line.contains("[I]") || line.contains("[D]") || line.contains("[V]")) {
+                    tracing::debug!("Skipping ESP32 debug line");
+                    continue;
+                }
+            }
+
+            // Parse response
+            if line.starts_with("OK") {
+                let data = line.strip_prefix("OK").map(|s| s.trim().to_string());
+                let data = if data.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+                    None
+                } else {
+                    data
+                };
+                return Ok(Response::Ok(data));
+            } else if line.starts_with("ERR") {
+                let msg = line.strip_prefix("ERR").unwrap_or(&line).trim().to_string();
+                return Ok(Response::Error(msg));
+            } else if line.starts_with('{') || (line.starts_with('[') && line.contains('{')) {
+                // JSON object or array
+                let json: serde_json::Value = serde_json::from_str(&line)?;
+                return Ok(Response::Json(json));
+            } else if line.starts_with("PKT") {
+                // Binary packet - treat as OK (actual packet reading done via recv_packet)
+                return Ok(Response::Ok(Some(line)));
+            } else if line.starts_with("PONG") {
+                // PING response
+                return Ok(Response::Ok(Some(line)));
+            } else {
+                // Skip unrecognized lines (boot messages, debug output, etc.)
+                // This allows the CLI to recover from devices that are still booting
+                tracing::debug!("Skipping unrecognized line: {:?}", line);
+                skip_count += 1;
+                continue;
+            }
         }
     }
 

@@ -43,10 +43,11 @@ enum Commands {
     /// Send a text message
     Send {
         /// Destination node (name or hash)
-        #[arg(short, long)]
+        #[arg(short = 't', long = "to")]
         to: Option<String>,
 
         /// Message text
+        #[arg(last = true)]
         message: String,
     },
 
@@ -159,6 +160,13 @@ enum Commands {
 
     /// Rotate device identity (generate new keypair)
     RotateIdentity,
+
+    /// Debug: read raw serial output from device
+    Debug {
+        /// Timeout in seconds
+        #[arg(short, long, default_value = "10")]
+        timeout: u64,
+    },
 }
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -480,6 +488,10 @@ async fn main() -> Result<()> {
             let port = require_port(&cli.port)?;
             cmd_rotate_identity(&port, cli.baud).await?;
         }
+        Commands::Debug { timeout } => {
+            let port = require_port(&cli.port)?;
+            cmd_debug(&port, cli.baud, timeout).await?;
+        }
     }
 
     Ok(())
@@ -678,13 +690,14 @@ async fn cmd_neighbors(port: &str, baud: u32) -> Result<()> {
     }
 
     println!("Neighbor Table ({} nodes):\n", neighbors.len());
-    println!("  {:8} {:16} {:6} {:6} {:8}", "Hash", "Name", "RSSI", "SNR", "Last Seen");
-    println!("  {:-<8} {:-<16} {:-<6} {:-<6} {:-<8}", "", "", "", "", "");
+    println!("  {:8} {:16} {:6} {:6} {:12} {:8}", "Hash", "Name", "RSSI", "SNR", "Firmware", "Last Seen");
+    println!("  {:-<8} {:-<16} {:-<6} {:-<6} {:-<12} {:-<8}", "", "", "", "", "", "");
 
     for n in neighbors {
         let name = n.name.unwrap_or_else(|| "?".into());
-        println!("  0x{:02x}     {:16} {:6} {:6} {}s ago",
-            n.node_hash, name, n.rssi, n.snr, n.last_seen_secs);
+        let firmware = n.firmware.unwrap_or_else(|| "unknown".into());
+        println!("  0x{:02x}     {:16} {:6} {:6} {:12} {}s ago",
+            n.node_hash, name, n.rssi, n.snr, firmware, n.last_seen_secs);
     }
 
     Ok(())
@@ -729,7 +742,7 @@ async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>) -> 
                         println!("Inbox ({} messages):\n", total);
 
                         for msg in messages {
-                            let from_hash = msg.get("from_hash").and_then(|h| h.as_str()).unwrap_or("?");
+                            let _from_hash = msg.get("from_hash").and_then(|h| h.as_str()).unwrap_or("?");
                             let from_name = msg.get("from_name").and_then(|n| n.as_str()).unwrap_or("?");
                             let channel = msg.get("channel").and_then(|c| c.as_str()).unwrap_or("?");
                             let decrypted = msg.get("decrypted").and_then(|d| d.as_bool()).unwrap_or(false);
@@ -1612,6 +1625,51 @@ async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bool, 
 
     println!("\nFlash complete!");
 
+    Ok(())
+}
+
+async fn cmd_debug(port: &str, baud: u32, timeout_secs: u64) -> Result<()> {
+    use std::io::Read;
+
+    println!("Debug: Reading raw serial from {} at {} baud", port, baud);
+    println!("Press Ctrl+C to stop, or wait {}s for timeout\n", timeout_secs);
+    println!("--- Serial Output ---");
+
+    let mut serial = serialport::new(port, baud)
+        .timeout(std::time::Duration::from_millis(100))
+        .open()?;
+
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    let mut buf = [0u8; 256];
+
+    while start.elapsed() < timeout {
+        match serial.read(&mut buf) {
+            Ok(n) if n > 0 => {
+                // Print as text, replacing non-printable chars
+                let text: String = buf[..n].iter()
+                    .map(|&b| if b.is_ascii_graphic() || b == b' ' || b == b'\n' || b == b'\r' || b == b'\t' {
+                        b as char
+                    } else {
+                        '.'
+                    })
+                    .collect();
+                print!("{}", text);
+                use std::io::Write;
+                std::io::stdout().flush()?;
+            }
+            Ok(_) => {}
+            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
+                // No data available, continue
+            }
+            Err(e) => {
+                eprintln!("\nSerial error: {}", e);
+                break;
+            }
+        }
+    }
+
+    println!("\n--- End of debug output ---");
     Ok(())
 }
 

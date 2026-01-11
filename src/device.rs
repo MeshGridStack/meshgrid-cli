@@ -99,6 +99,7 @@ impl Device {
                 rssi: n.rssi,
                 snr: n.snr,
                 last_seen_secs: n.last_seen_secs,
+                firmware: n.firmware,
             })
             .collect())
     }
@@ -263,6 +264,7 @@ pub struct NeighborInfo {
     pub rssi: i16,
     pub snr: i8,
     pub last_seen_secs: u32,
+    pub firmware: Option<String>,
 }
 
 /// Trace result.

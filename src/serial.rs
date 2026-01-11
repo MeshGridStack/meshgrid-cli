@@ -15,7 +15,9 @@ pub struct SerialPort {
 impl SerialPort {
     /// Open a serial port connection.
     pub async fn open(port_name: &str, baud_rate: u32) -> Result<Self> {
-        let port = tokio_serial::new(port_name, baud_rate)
+        use tokio_serial::SerialPort as _;
+
+        let mut port = tokio_serial::new(port_name, baud_rate)
             .data_bits(tokio_serial::DataBits::Eight)
             .stop_bits(tokio_serial::StopBits::One)
             .parity(tokio_serial::Parity::None)
@@ -23,6 +25,23 @@ impl SerialPort {
             .timeout(Duration::from_millis(100))
             .open_native_async()
             .with_context(|| format!("Failed to open serial port: {}", port_name))?;
+
+        // ESP32-S3 native USB (ttyACM) - DON'T toggle DTR/RTS as it triggers reset!
+        // The auto-reset circuit uses DTR+RTS to enter bootloader or reset.
+        // Set both HIGH to avoid triggering reset.
+        let is_native_usb = port_name.contains("ttyACM") || port_name.contains("cu.usb");
+
+        if is_native_usb {
+            // Set DTR and RTS high to avoid reset (low triggers reset on ESP32)
+            let _ = port.write_data_terminal_ready(true);
+            let _ = port.write_request_to_send(true);
+            // ESP32-S3 native USB needs extra time after boot
+            // The firmware has a 2s delay + boot messages before it's ready
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        } else {
+            // Small delay for USB CDC to stabilize
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
 
         Ok(Self {
             port,
@@ -99,12 +118,16 @@ impl SerialPort {
         // Clear read buffer
         self.read_buf.clear();
 
-        // With ARDUINO_USB_CDC_ON_BOOT=0, device doesn't reset on port open
-        // Just drain any pending data
+        // Drain any pending data (boot messages, etc.)
+        // Use longer timeout to catch all buffered output
         let mut buf = [0u8; 1024];
-        while let Ok(Some(n)) = self.read_timeout(&mut buf, Duration::from_millis(50)).await {
-            if n == 0 {
-                break;
+        let start = std::time::Instant::now();
+        let max_drain_time = Duration::from_millis(500);
+
+        while start.elapsed() < max_drain_time {
+            match self.read_timeout(&mut buf, Duration::from_millis(100)).await {
+                Ok(Some(n)) if n > 0 => continue, // More data, keep draining
+                _ => break, // Timeout or error, buffer is empty
             }
         }
 

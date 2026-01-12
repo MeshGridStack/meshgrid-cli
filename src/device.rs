@@ -21,6 +21,20 @@ impl Device {
         Ok(Self { protocol })
     }
 
+    /// Authenticate with PIN.
+    pub async fn authenticate(&mut self, pin: &str) -> Result<()> {
+        use crate::protocol::Response;
+
+        let cmd = format!("AUTH {}", pin);
+        let response = self.protocol.command(&cmd).await?;
+
+        match response {
+            Response::Ok(_) => Ok(()),
+            Response::Error(msg) => anyhow::bail!("Authentication failed: {}", msg),
+            _ => anyhow::bail!("Unexpected response to AUTH command"),
+        }
+    }
+
     /// Get device info.
     pub async fn get_info(&mut self) -> Result<DeviceInfo> {
         let info = self.protocol.get_info().await?;
@@ -116,7 +130,7 @@ impl Device {
             // Try to find neighbor by name
             let neighbors = self.get_neighbors().await?;
             if let Some(neighbor) = neighbors.iter().find(|n| {
-                n.name.as_ref().map(|name| name.as_str()) == Some(dest)
+                n.name.as_deref() == Some(dest)
             }) {
                 format!("0x{:x}", neighbor.node_hash)
             } else {

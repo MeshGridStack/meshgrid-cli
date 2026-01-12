@@ -233,8 +233,8 @@ impl Protocol {
             } else if line.starts_with("ERR") {
                 let msg = line.strip_prefix("ERR").unwrap_or(&line).trim().to_string();
                 return Ok(Response::Error(msg));
-            } else if line.starts_with('{') || (line.starts_with('[') && line.contains('{')) {
-                // JSON object or array
+            } else if line.starts_with('{') || line.starts_with('[') {
+                // JSON object or array (including empty arrays)
                 let json: serde_json::Value = serde_json::from_str(&line)?;
                 return Ok(Response::Json(json));
             } else if line.starts_with("PKT") {
@@ -342,13 +342,63 @@ impl Protocol {
     /// Send a trace packet.
     pub async fn trace(&mut self, target: &str) -> Result<TraceResult> {
         let cmd = format!("TRACE {}", target);
+
+        // Send command and get initial response (status="sent")
         match self.command(&cmd).await? {
-            Response::Json(json) => {
-                let result: TraceResult = serde_json::from_value(json)?;
-                Ok(result)
+            Response::Json(_) => {
+                // Initial "sent" response - now wait for trace_response
             }
             Response::Error(e) => bail!("Device error: {}", e),
             _ => bail!("Unexpected response to TRACE"),
+        }
+
+        // Wait for trace_response with timeout (max 10 seconds)
+        let timeout = Duration::from_secs(10);
+        let start = std::time::Instant::now();
+
+        loop {
+            if start.elapsed() > timeout {
+                bail!("Trace timeout - no response from target");
+            }
+
+            // Read a line
+            match self.port.read_line_timeout(Duration::from_millis(500)).await? {
+                Some(line) => {
+                    // Try to parse as JSON
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                        // Check if it's a trace_response
+                        if json.get("type").and_then(|v| v.as_str()) == Some("trace_response") {
+                            // Extract path
+                            let path = json.get("path")
+                                .and_then(|v| v.as_array())
+                                .map(|arr| arr.iter()
+                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                    .collect())
+                                .unwrap_or_default();
+
+                            // Extract hop count
+                            let hop_count = json.get("hops")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u8;
+
+                            // Extract RTT if available
+                            let rtt_ms = json.get("rtt_ms")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as u32;
+
+                            return Ok(TraceResult {
+                                path,
+                                hop_count,
+                                rtt_ms,
+                            });
+                        }
+                    }
+                }
+                None => {
+                    // No data yet, continue waiting
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+            }
         }
     }
 

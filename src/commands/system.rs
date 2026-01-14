@@ -2,8 +2,7 @@
 
 use anyhow::{Result, bail};
 use crate::device::Device;
-use crate::serial::SerialPort;
-use crate::protocol::{Protocol, Response};
+use crate::protocol::Response;
 use crate::cli::{TimeAction, LogAction, BoardType};
 
 pub async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
@@ -17,9 +16,9 @@ pub async fn cmd_ui(port: &str, baud: u32) -> Result<()> {
     crate::ui::run(port, baud).await
 }
 
-pub async fn cmd_mode(port: &str, baud: u32, mode: &str) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_mode(port: &str, baud: u32, pin: Option<&str>, mode: &str) -> Result<()> {
+    let dev = super::connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     let mode_lower = mode.to_lowercase();
     let valid_modes = ["client", "repeater", "room"];
@@ -43,11 +42,11 @@ pub async fn cmd_mode(port: &str, baud: u32, mode: &str) -> Result<()> {
     }
 }
 
-pub async fn cmd_time(port: &str, baud: u32, action: Option<TimeAction>) -> Result<()> {
+pub async fn cmd_time(port: &str, baud: u32, pin: Option<&str>, action: Option<TimeAction>) -> Result<()> {
     use chrono::Local;
 
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+    let dev = super::connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     let action = action.unwrap_or(TimeAction::Show);
 
@@ -77,9 +76,9 @@ pub async fn cmd_time(port: &str, baud: u32, action: Option<TimeAction>) -> Resu
     }
 }
 
-pub async fn cmd_log(port: &str, baud: u32, action: Option<LogAction>) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_log(port: &str, baud: u32, pin: Option<&str>, action: Option<LogAction>) -> Result<()> {
+    let dev = super::connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     let action = action.unwrap_or(LogAction::Show);
 
@@ -141,48 +140,85 @@ pub async fn cmd_log(port: &str, baud: u32, action: Option<LogAction>) -> Result
     Ok(())
 }
 
-pub async fn cmd_debug(port: &str, baud: u32, timeout_secs: u64) -> Result<()> {
-    use std::io::Read;
+pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeout_secs: u64) -> Result<()> {
+    use crate::serial::SerialPort;
+    use std::io::Write;
+    use std::fs::OpenOptions;
 
-    println!("Debug: Reading raw serial from {} at {} baud", port, baud);
-    println!("Press Ctrl+C to stop, or wait {}s for timeout\n", timeout_secs);
-    println!("--- Serial Output ---");
+    let infinite = timeout_secs == 0;
 
-    let mut serial = serialport::new(port, baud)
-        .timeout(std::time::Duration::from_millis(100))
-        .open()?;
+    if let Some(ref file) = output_file {
+        println!("Capturing debug output to: {}", file);
+    } else {
+        println!("Streaming debug output to stdout");
+    }
 
+    if infinite {
+        println!("Running indefinitely (Press Ctrl+C to stop)\n");
+    } else {
+        println!("Timeout: {} seconds\n", timeout_secs);
+    }
+
+    // Open output file (unbuffered)
+    let mut file_handle = if let Some(ref path) = output_file {
+        Some(OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?)
+    } else {
+        None
+    };
+
+    let mut serial = SerialPort::open(port, baud).await?;
     let start = std::time::Instant::now();
     let timeout = std::time::Duration::from_secs(timeout_secs);
-    let mut buf = [0u8; 256];
 
-    while start.elapsed() < timeout {
-        match serial.read(&mut buf) {
-            Ok(n) if n > 0 => {
-                // Print as text, replacing non-printable chars
-                let text: String = buf[..n].iter()
-                    .map(|&b| if b.is_ascii_graphic() || b == b' ' || b == b'\n' || b == b'\r' || b == b'\t' {
-                        b as char
-                    } else {
-                        '.'
-                    })
-                    .collect();
-                print!("{}", text);
-                use std::io::Write;
-                std::io::stdout().flush()?;
+    loop {
+        // Check timeout
+        if !infinite && start.elapsed() >= timeout {
+            break;
+        }
+
+        // Read COBS frame with short timeout
+        match serial.read_cobs_frame_timeout(std::time::Duration::from_millis(100)).await {
+            Ok(Some(frame)) => {
+                // Decode frame to string
+                let text = String::from_utf8_lossy(&frame).to_string();
+
+                // Try to parse as JSON to check if it's a debug frame
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                    if json.get("type").and_then(|v| v.as_str()) == Some("debug") {
+                        // It's a debug frame - extract and output
+                        let level = json.get("level").and_then(|v| v.as_str()).unwrap_or("INFO");
+                        let msg = json.get("msg").and_then(|v| v.as_str()).unwrap_or("");
+
+                        let output_line = format!("[{}] {}\n", level, msg);
+
+                        if let Some(ref mut file) = file_handle {
+                            file.write_all(output_line.as_bytes())?;
+                            file.flush()?;  // Force immediate write
+                        } else {
+                            print!("{}", output_line);
+                            std::io::stdout().flush()?;
+                        }
+                    }
+                }
             }
-            Ok(_) => {}
-            Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {
-                // No data available, continue
+            Ok(None) => {
+                // Timeout, continue
             }
             Err(e) => {
-                eprintln!("\nSerial error: {}", e);
+                eprintln!("Serial error: {}", e);
                 break;
             }
         }
     }
 
-    println!("\n--- End of debug output ---");
+    if output_file.is_some() {
+        println!("\nDebug capture stopped");
+    } else {
+        println!("\n--- End of debug output ---");
+    }
     Ok(())
 }
 

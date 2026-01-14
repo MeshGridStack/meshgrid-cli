@@ -40,6 +40,10 @@ pub enum Commands {
         #[arg(short = 't', long = "to")]
         to: Option<String>,
 
+        /// Channel name (e.g., "Public", "test-v1")
+        #[arg(short = 'c', long = "channel")]
+        channel: Option<String>,
+
         /// Message text
         #[arg(last = true)]
         message: String,
@@ -156,10 +160,14 @@ pub enum Commands {
         detect: bool,
     },
 
-    /// Debug: read raw serial output
+    /// Capture debug output to file
     Debug {
-        /// Timeout in seconds
-        #[arg(short, long, default_value = "30")]
+        /// Output file path (defaults to stdout if not specified)
+        #[arg(short, long)]
+        output: Option<String>,
+
+        /// Timeout in seconds (0 = infinite)
+        #[arg(short, long, default_value = "0")]
         timeout: u64,
     },
 

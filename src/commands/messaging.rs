@@ -2,23 +2,49 @@
 
 use anyhow::{Result, bail};
 use super::connect_with_auth;
-use crate::serial::SerialPort;
-use crate::protocol::{Protocol, Response};
+use crate::protocol::Response;
 use crate::cli::{MessagesAction, ChannelsAction};
 
-/// Send a message (broadcast or direct)
-pub async fn cmd_send(port: &str, baud: u32, pin: Option<&str>, to: Option<&str>, message: &str) -> Result<()> {
-    let mut dev = connect_with_auth(port, baud, pin).await?;
+/// Send a message (broadcast, direct, or channel)
+pub async fn cmd_send(port: &str, baud: u32, pin: Option<&str>, to: Option<&str>, channel: Option<&str>, message: &str) -> Result<()> {
+    let dev = connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
-    if let Some(dest) = to {
+    if let Some(ch) = channel {
+        // Send to channel
+        println!("Sending to channel {}: {}", ch, message);
+        let cmd = format!("CHANNEL SEND {} {}", ch, message);
+        match proto.command(&cmd).await? {
+            Response::Ok(_) => {
+                println!("Sent!");
+            }
+            Response::Error(e) => bail!("Device error: {}", e),
+            _ => bail!("Unexpected response to CHANNEL SEND"),
+        }
+    } else if let Some(dest) = to {
+        // Send direct message
         println!("Sending to {}: {}", dest, message);
-        dev.send_direct(dest, message).await?;
+        let cmd = format!("SEND {} {}", dest, message);
+        match proto.command(&cmd).await? {
+            Response::Ok(_) => {
+                println!("Sent!");
+            }
+            Response::Error(e) => bail!("Device error: {}", e),
+            _ => bail!("Unexpected response to SEND"),
+        }
     } else {
+        // Broadcast to public channel
         println!("Broadcasting: {}", message);
-        dev.send_broadcast(message).await?;
+        let cmd = format!("SEND {}", message);
+        match proto.command(&cmd).await? {
+            Response::Ok(_) => {
+                println!("Sent!");
+            }
+            Response::Error(e) => bail!("Device error: {}", e),
+            _ => bail!("Unexpected response to SEND"),
+        }
     }
 
-    println!("Sent!");
     Ok(())
 }
 
@@ -54,9 +80,9 @@ pub async fn cmd_monitor(port: &str, baud: u32, pin: Option<&str>) -> Result<()>
 }
 
 /// Manage inbox messages
-pub async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_messages(port: &str, baud: u32, pin: Option<&str>, action: Option<MessagesAction>) -> Result<()> {
+    let dev = connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     let action = action.unwrap_or(MessagesAction::Show);
 
@@ -75,6 +101,7 @@ pub async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>)
                             let _from_hash = msg.get("from_hash").and_then(|h| h.as_str()).unwrap_or("?");
                             let from_name = msg.get("from_name").and_then(|n| n.as_str()).unwrap_or("?");
                             let channel = msg.get("channel").and_then(|c| c.as_str()).unwrap_or("?");
+                            let protocol = msg.get("protocol").and_then(|p| p.as_str()).unwrap_or("v0");
                             let decrypted = msg.get("decrypted").and_then(|d| d.as_bool()).unwrap_or(false);
                             let text = msg.get("text").and_then(|t| t.as_str()).unwrap_or("");
                             let timestamp = msg.get("timestamp").and_then(|t| t.as_u64()).unwrap_or(0);
@@ -87,7 +114,7 @@ pub async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>)
 
                             let lock = if decrypted { " " } else { "🔒" };
 
-                            println!("  [{}s] {} from {} ({}): {}",
+                            println!("  [{}s] {} from {} ({}/{protocol}): {}",
                                      timestamp / 1000,
                                      lock,
                                      from_name,
@@ -115,41 +142,65 @@ pub async fn cmd_messages(port: &str, baud: u32, action: Option<MessagesAction>)
 }
 
 /// Manage channels
-pub async fn cmd_channels(port: &str, baud: u32, action: Option<ChannelsAction>) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_channels(port: &str, baud: u32, pin: Option<&str>, action: Option<ChannelsAction>) -> Result<()> {
+    let dev = connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
-    let _action = action.unwrap_or(ChannelsAction::List);
+    let action = action.unwrap_or(ChannelsAction::List);
 
-    match proto.command("CHANNELS").await? {
-        Response::Json(json) => {
-            let channels = json.get("channels").and_then(|c| c.as_array());
-            let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
+    match action {
+        ChannelsAction::List => {
+            match proto.command("CHANNELS").await? {
+                Response::Json(json) => {
+                    let channels = json.get("channels").and_then(|c| c.as_array());
+                    let total = json.get("total").and_then(|t| t.as_u64()).unwrap_or(0);
 
-            println!("Channels ({}):\n", total);
+                    println!("Channels ({}):\n", total);
 
-            if let Some(channels) = channels {
-                for channel in channels {
-                    let name = channel.get("name").and_then(|n| n.as_str()).unwrap_or("?");
-                    let hash = channel.get("hash").and_then(|h| h.as_str()).unwrap_or("?");
-                    let builtin = channel.get("builtin").and_then(|b| b.as_bool()).unwrap_or(false);
+                    if let Some(channels) = channels {
+                        for channel in channels {
+                            let name = channel.get("name").and_then(|n| n.as_str()).unwrap_or("?");
+                            let hash = channel.get("hash").and_then(|h| h.as_str()).unwrap_or("?");
+                            let builtin = channel.get("builtin").and_then(|b| b.as_bool()).unwrap_or(false);
 
-                    let tag = if builtin { "[builtin]" } else { "[custom]" };
-                    println!("  {} - {} {}", hash, name, tag);
+                            let tag = if builtin { "[builtin]" } else { "[custom]" };
+                            println!("  {} - {} {}", hash, name, tag);
+                        }
+                    }
                 }
+                Response::Error(e) => bail!("Device error: {}", e),
+                _ => bail!("Unexpected response to CHANNELS"),
             }
         }
-        Response::Error(e) => bail!("Device error: {}", e),
-        _ => bail!("Unexpected response to CHANNELS"),
+        ChannelsAction::Add { name, psk } => {
+            let cmd = format!("CHANNEL JOIN {} {}", name, psk);
+            match proto.command(&cmd).await? {
+                Response::Ok(msg) => {
+                    println!("{}", msg.unwrap_or_else(|| "Channel added".to_string()));
+                }
+                Response::Error(e) => bail!("Device error: {}", e),
+                _ => bail!("Unexpected response to CHANNEL JOIN"),
+            }
+        }
+        ChannelsAction::Remove { name } => {
+            let cmd = format!("CHANNEL LEAVE {}", name);
+            match proto.command(&cmd).await? {
+                Response::Ok(msg) => {
+                    println!("{}", msg.unwrap_or_else(|| "Channel removed".to_string()));
+                }
+                Response::Error(e) => bail!("Device error: {}", e),
+                _ => bail!("Unexpected response to CHANNEL LEAVE"),
+            }
+        }
     }
 
     Ok(())
 }
 
 /// Rotate device identity (generate new keypair)
-pub async fn cmd_rotate_identity(port: &str, baud: u32) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_rotate_identity(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
+    let dev = connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     println!("WARNING: This will generate a new keypair and clear all encrypted data.");
     println!("         Old messages and neighbor secrets will be deleted.");

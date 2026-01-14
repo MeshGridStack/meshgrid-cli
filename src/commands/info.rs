@@ -30,9 +30,9 @@ pub async fn cmd_info(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
 }
 
 /// Show device statistics
-pub async fn cmd_stats(port: &str, baud: u32) -> Result<()> {
-    let serial_port = SerialPort::open(port, baud).await?;
-    let mut proto = Protocol::new(serial_port);
+pub async fn cmd_stats(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
+    let dev = connect_with_auth(port, baud, pin).await?;
+    let mut proto = dev.into_protocol();
 
     // Request stats from device
     match proto.command("STATS").await? {
@@ -200,8 +200,8 @@ pub async fn cmd_stats(port: &str, baud: u32) -> Result<()> {
 }
 
 /// Show neighbor table
-pub async fn cmd_neighbors(port: &str, baud: u32) -> Result<()> {
-    let mut dev = connect_with_auth(port, baud, None).await?;
+pub async fn cmd_neighbors(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
+    let mut dev = connect_with_auth(port, baud, pin).await?;
     let neighbors = dev.get_neighbors().await?;
 
     if neighbors.is_empty() {

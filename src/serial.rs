@@ -1,10 +1,79 @@
 //! Serial port transport layer.
 //!
 //! Handles USB serial communication with meshgrid/MeshCore devices.
+//! Supports COBS (Consistent Overhead Byte Stuffing) framing.
 
 use anyhow::{Context, Result};
 use std::time::Duration;
 use tokio_serial::SerialPortBuilderExt;
+
+/// COBS encode a buffer
+/// Returns the encoded data (without the zero terminator)
+fn cobs_encode(data: &[u8]) -> Vec<u8> {
+    let mut encoded = Vec::with_capacity(data.len() + (data.len() / 254) + 1);
+    let mut code_ptr = 0;
+    encoded.push(0); // Placeholder for code byte
+    let mut code = 1u8;
+
+    for &byte in data {
+        if byte == 0 {
+            // Found zero - write code byte
+            encoded[code_ptr] = code;
+            code_ptr = encoded.len();
+            encoded.push(0); // Placeholder for next code byte
+            code = 1;
+        } else {
+            encoded.push(byte);
+            code = code.wrapping_add(1);
+            if code == 0xFF {
+                // Code byte full - write it
+                encoded[code_ptr] = code;
+                code_ptr = encoded.len();
+                encoded.push(0); // Placeholder for next code byte
+                code = 1;
+            }
+        }
+    }
+
+    // Write final code byte
+    encoded[code_ptr] = code;
+    encoded
+}
+
+/// COBS decode a buffer
+/// Returns the decoded data, or None if invalid
+fn cobs_decode(data: &[u8]) -> Option<Vec<u8>> {
+    if data.is_empty() {
+        return Some(Vec::new());
+    }
+
+    let mut decoded = Vec::with_capacity(data.len());
+    let mut i = 0;
+
+    while i < data.len() {
+        let code = data[i];
+        if code == 0 {
+            return None; // Invalid
+        }
+        i += 1;
+
+        // Copy data bytes
+        for _ in 1..code {
+            if i >= data.len() {
+                break;
+            }
+            decoded.push(data[i]);
+            i += 1;
+        }
+
+        // Insert zero if not at end
+        if code < 0xFF && i < data.len() {
+            decoded.push(0);
+        }
+    }
+
+    Some(decoded)
+}
 
 /// Serial port connection.
 pub struct SerialPort {
@@ -132,6 +201,52 @@ impl SerialPort {
         }
 
         Ok(())
+    }
+
+    /// Write a COBS-encoded frame (with zero terminator)
+    pub async fn write_cobs_frame(&mut self, data: &[u8]) -> Result<()> {
+        use tokio::io::AsyncWriteExt;
+        let encoded = cobs_encode(data);
+        self.port.write_all(&encoded).await?;
+        self.port.write_all(&[0]).await?; // COBS frame delimiter
+        self.port.flush().await?;
+        Ok(())
+    }
+
+    /// Read a COBS-encoded frame (blocking until zero byte)
+    pub async fn read_cobs_frame(&mut self) -> Result<Vec<u8>> {
+        use tokio::io::AsyncReadExt;
+
+        let mut encoded = Vec::new();
+        loop {
+            // Check if we have a zero byte in buffer
+            if let Some(pos) = self.read_buf.iter().position(|&b| b == 0) {
+                encoded.extend_from_slice(&self.read_buf[..pos]);
+                self.read_buf.drain(..=pos);
+                break;
+            }
+
+            // Read more data
+            let mut tmp = [0u8; 256];
+            let n = self.port.read(&mut tmp).await?;
+            if n == 0 {
+                anyhow::bail!("EOF on serial port");
+            }
+            self.read_buf.extend_from_slice(&tmp[..n]);
+        }
+
+        // Decode COBS
+        cobs_decode(&encoded)
+            .ok_or_else(|| anyhow::anyhow!("Invalid COBS frame"))
+    }
+
+    /// Read a COBS frame with timeout
+    pub async fn read_cobs_frame_timeout(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>> {
+        match tokio::time::timeout(timeout, self.read_cobs_frame()).await {
+            Ok(Ok(frame)) => Ok(Some(frame)),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Ok(None), // Timeout
+        }
     }
 }
 

@@ -119,11 +119,13 @@ impl Device {
     }
 
     /// Send a broadcast message.
+    #[allow(dead_code)]
     pub async fn send_broadcast(&mut self, message: &str) -> Result<()> {
         self.protocol.send_broadcast(message).await
     }
 
     /// Send a direct message.
+    #[allow(dead_code)]
     pub async fn send_direct(&mut self, dest: &str, message: &str) -> Result<()> {
         // If dest is not a hash (0x...), look it up in neighbors
         let resolved_dest = if !dest.starts_with("0x") {

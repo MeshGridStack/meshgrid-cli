@@ -181,14 +181,11 @@ impl Protocol {
 
     /// Send a command and wait for response.
     pub async fn command(&mut self, cmd: &str) -> Result<Response> {
-        // Send empty line first to cancel any partial command on device side
-        self.port.write(b"\n").await?;
-
         // Clear any pending data/responses
         self.port.clear().await?;
 
-        // Send command
-        self.port.write_line(cmd).await?;
+        // Send command as COBS frame
+        self.port.write_cobs_frame(cmd.as_bytes()).await?;
 
         // Wait for response
         self.read_response().await
@@ -196,27 +193,32 @@ impl Protocol {
 
     /// Read a response from the device.
     async fn read_response(&mut self) -> Result<Response> {
-        // Loop to skip ESP32 debug output lines and boot messages
+        // Loop to skip debug frames and wait for command response
         // Limit iterations to prevent infinite loops on stuck devices
-        const MAX_SKIP_LINES: usize = 50;
+        const MAX_SKIP_FRAMES: usize = 50;
         let mut skip_count = 0;
 
         loop {
-            if skip_count >= MAX_SKIP_LINES {
-                bail!("Too many unrecognized lines - device may be in a crash loop");
+            if skip_count >= MAX_SKIP_FRAMES {
+                bail!("Too many unrecognized frames - device may be in a crash loop");
             }
-            let line = match self.port.read_line_timeout(CMD_TIMEOUT).await? {
-                Some(line) => line,
+
+            // Read COBS frame
+            let frame = match self.port.read_cobs_frame_timeout(CMD_TIMEOUT).await? {
+                Some(frame) => frame,
                 None => bail!("Command timeout"),
             };
 
+            // Convert to string
+            let line = String::from_utf8_lossy(&frame).to_string();
             tracing::debug!("Raw response: {:?}", line);
 
-            // Skip ESP32-IDF debug output lines (format: "[  timestamp][level][component]...")
-            if line.starts_with('[') && !line.starts_with("[{") {
-                // Check if it looks like ESP32 debug output
-                if line.contains("][") && (line.contains("[E]") || line.contains("[W]") || line.contains("[I]") || line.contains("[D]") || line.contains("[V]")) {
-                    tracing::debug!("Skipping ESP32 debug line");
+            // Check if it's a debug frame - skip it
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                if json.get("type").and_then(|v| v.as_str()) == Some("debug") {
+                    // This is a debug frame - skip it and continue
+                    tracing::debug!("Skipping debug frame: {:?}", json);
+                    skip_count += 1;
                     continue;
                 }
             }
@@ -244,9 +246,8 @@ impl Protocol {
                 // PING response
                 return Ok(Response::Ok(Some(line)));
             } else {
-                // Skip unrecognized lines (boot messages, debug output, etc.)
-                // This allows the CLI to recover from devices that are still booting
-                tracing::debug!("Skipping unrecognized line: {:?}", line);
+                // Skip unrecognized frames
+                tracing::debug!("Skipping unrecognized frame: {:?}", line);
                 skip_count += 1;
                 continue;
             }
@@ -330,6 +331,7 @@ impl Protocol {
     }
 
     /// Send a direct message.
+    #[allow(dead_code)]
     pub async fn send_direct(&mut self, dest: &str, message: &str) -> Result<()> {
         let cmd = format!("SEND {} {}", dest, message);
         match self.command(&cmd).await? {

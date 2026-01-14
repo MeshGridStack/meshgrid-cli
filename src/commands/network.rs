@@ -2,9 +2,10 @@
 
 use anyhow::Result;
 use crate::device::Device;
+use super::connect_with_auth;
 
-pub async fn cmd_trace(port: &str, baud: u32, target: &str) -> Result<()> {
-    let mut dev = Device::connect(port, baud).await?;
+pub async fn cmd_trace(port: &str, baud: u32, pin: Option<&str>, target: &str) -> Result<()> {
+    let mut dev = connect_with_auth(port, baud, pin).await?;
 
     println!("Tracing route to {}...\n", target);
 
@@ -17,8 +18,8 @@ pub async fn cmd_trace(port: &str, baud: u32, target: &str) -> Result<()> {
     Ok(())
 }
 
-pub async fn cmd_advert(port: &str, baud: u32, local_only: bool, flood_only: bool) -> Result<()> {
-    let mut dev = Device::connect(port, baud).await?;
+pub async fn cmd_advert(port: &str, baud: u32, pin: Option<&str>, local_only: bool, flood_only: bool) -> Result<()> {
+    let mut dev = connect_with_auth(port, baud, pin).await?;
 
     // Determine which advertisements to send
     let send_local = !flood_only; // Send local unless flood-only is specified

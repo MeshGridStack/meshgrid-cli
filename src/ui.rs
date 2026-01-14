@@ -260,61 +260,71 @@ async fn run_ui_loop(
         // Handle keyboard input (with timeout)
         if event::poll(std::time::Duration::from_millis(50))? {
             if let Event::Key(key) = event::read()? {
-                let mut app = app.lock().unwrap();
-
-                match key.code {
-                    KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.should_quit = true;
-                    }
-                    KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                        app.should_quit = true;
-                    }
-                    KeyCode::Enter => {
+                // Handle Enter key separately to avoid holding lock across await
+                if key.code == KeyCode::Enter {
+                    let msg = {
+                        let mut app = app.lock().unwrap();
                         if !app.input.is_empty() {
                             let msg = app.input.clone();
                             app.add_sent(&msg);
                             app.input.clear();
                             app.cursor = 0;
+                            Some(msg)
+                        } else {
+                            None
+                        }
+                    }; // Lock dropped here
 
-                            // Send in background
-                            let _ = tx_cmd.send(msg).await;
+                    if let Some(msg) = msg {
+                        // Send in background (lock is released)
+                        let _ = tx_cmd.send(msg).await;
+                    }
+                } else {
+                    let mut app = app.lock().unwrap();
+
+                    match key.code {
+                        KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.should_quit = true;
                         }
-                    }
-                    KeyCode::Char(c) => {
-                        let cursor = app.cursor;
-                        app.input.insert(cursor, c);
-                        app.cursor += 1;
-                    }
-                    KeyCode::Backspace => {
-                        if app.cursor > 0 {
-                            app.cursor -= 1;
+                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                            app.should_quit = true;
+                        }
+                        KeyCode::Char(c) => {
                             let cursor = app.cursor;
-                            app.input.remove(cursor);
-                        }
-                    }
-                    KeyCode::Delete => {
-                        let cursor = app.cursor;
-                        if cursor < app.input.len() {
-                            app.input.remove(cursor);
-                        }
-                    }
-                    KeyCode::Left => {
-                        if app.cursor > 0 {
-                            app.cursor -= 1;
-                        }
-                    }
-                    KeyCode::Right => {
-                        if app.cursor < app.input.len() {
+                            app.input.insert(cursor, c);
                             app.cursor += 1;
                         }
+                        KeyCode::Backspace => {
+                            if app.cursor > 0 {
+                                app.cursor -= 1;
+                                let cursor = app.cursor;
+                                app.input.remove(cursor);
+                            }
+                        }
+                        KeyCode::Delete => {
+                            let cursor = app.cursor;
+                            if cursor < app.input.len() {
+                                app.input.remove(cursor);
+                            }
+                        }
+                        KeyCode::Left => {
+                            if app.cursor > 0 {
+                                app.cursor -= 1;
+                            }
+                        }
+                        KeyCode::Right => {
+                            if app.cursor < app.input.len() {
+                                app.cursor += 1;
+                            }
+                        }
+                        KeyCode::Home => {
+                            app.cursor = 0;
+                        }
+                        KeyCode::End => {
+                            app.cursor = app.input.len();
+                        }
+                        _ => {}
                     }
-                    KeyCode::Home => {
-                        app.cursor = 0;
-                    }
-                    KeyCode::End => {
-                        app.cursor = app.input.len();
-                    }
-                    _ => {}
                 }
             }
         }

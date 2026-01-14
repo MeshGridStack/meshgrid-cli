@@ -50,9 +50,9 @@ async fn main() -> Result<()> {
             let port = require_port(&cli.port)?;
             cmd_info(&port, cli.baud, cli.pin.as_deref()).await?;
         }
-        Commands::Send { to, message } => {
+        Commands::Send { to, channel, message } => {
             let port = require_port(&cli.port)?;
-            cmd_send(&port, cli.baud, cli.pin.as_deref(), to.as_deref(), &message).await?;
+            cmd_send(&port, cli.baud, cli.pin.as_deref(), to.as_deref(), channel.as_deref(), &message).await?;
         }
         Commands::Monitor => {
             let port = require_port(&cli.port)?;
@@ -68,11 +68,11 @@ async fn main() -> Result<()> {
         }
         Commands::Neighbors => {
             let port = require_port(&cli.port)?;
-            cmd_neighbors(&port, cli.baud).await?;
+            cmd_neighbors(&port, cli.baud, cli.pin.as_deref()).await?;
         }
         Commands::Trace { target } => {
             let port = require_port(&cli.port)?;
-            cmd_trace(&port, cli.baud, &target).await?;
+            cmd_trace(&port, cli.baud, cli.pin.as_deref(), &target).await?;
         }
         Commands::Reboot => {
             let port = require_port(&cli.port)?;
@@ -92,7 +92,7 @@ async fn main() -> Result<()> {
         }
         Commands::Stats => {
             let port = require_port(&cli.port)?;
-            cmd_stats(&port, cli.baud).await?;
+            cmd_stats(&port, cli.baud, cli.pin.as_deref()).await?;
         }
         Commands::Mode { mode } => {
             let port = require_port(&cli.port)?;
@@ -100,23 +100,23 @@ async fn main() -> Result<()> {
                 cli::DeviceMode::Client => "client",
                 cli::DeviceMode::Repeater => "repeater",
             };
-            cmd_mode(&port, cli.baud, mode_str).await?;
+            cmd_mode(&port, cli.baud, cli.pin.as_deref(), mode_str).await?;
         }
         Commands::Time { action } => {
             let port = require_port(&cli.port)?;
-            cmd_time(&port, cli.baud, action).await?;
+            cmd_time(&port, cli.baud, cli.pin.as_deref(), action).await?;
         }
         Commands::Log { action } => {
             let port = require_port(&cli.port)?;
-            cmd_log(&port, cli.baud, action).await?;
+            cmd_log(&port, cli.baud, cli.pin.as_deref(), action).await?;
         }
         Commands::Messages { action } => {
             let port = require_port(&cli.port)?;
-            cmd_messages(&port, cli.baud, action).await?;
+            cmd_messages(&port, cli.baud, cli.pin.as_deref(), action).await?;
         }
         Commands::Channels { action } => {
             let port = require_port(&cli.port)?;
-            cmd_channels(&port, cli.baud, action).await?;
+            cmd_channels(&port, cli.baud, cli.pin.as_deref(), action).await?;
         }
         Commands::Flash { board, monitor, local, detect } => {
             let port = cli.port.clone();
@@ -124,15 +124,15 @@ async fn main() -> Result<()> {
         }
         Commands::Advert { local, flood } => {
             let port = require_port(&cli.port)?;
-            cmd_advert(&port, cli.baud, local, flood).await?;
+            cmd_advert(&port, cli.baud, cli.pin.as_deref(), local, flood).await?;
         }
         Commands::RotateIdentity => {
             let port = require_port(&cli.port)?;
-            cmd_rotate_identity(&port, cli.baud).await?;
+            cmd_rotate_identity(&port, cli.baud, cli.pin.as_deref()).await?;
         }
-        Commands::Debug { timeout } => {
+        Commands::Debug { output, timeout } => {
             let port = require_port(&cli.port)?;
-            cmd_debug(&port, cli.baud, timeout).await?;
+            cmd_debug(&port, cli.baud, output, timeout).await?;
         }
         Commands::Stdin => {
             // TODO: Implement stdin command processing

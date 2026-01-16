@@ -126,15 +126,6 @@ impl SerialPort {
         Ok(())
     }
 
-    /// Write a line (with newline).
-    pub async fn write_line(&mut self, line: &str) -> Result<()> {
-        use tokio::io::AsyncWriteExt;
-        self.port.write_all(line.as_bytes()).await?;
-        self.port.write_all(b"\n").await?;
-        self.port.flush().await?;
-        Ok(())
-    }
-
     /// Read a line from the serial port.
     pub async fn read_line(&mut self) -> Result<String> {
         use tokio::io::AsyncReadExt;

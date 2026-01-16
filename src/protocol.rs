@@ -330,17 +330,6 @@ impl Protocol {
         }
     }
 
-    /// Send a direct message.
-    #[allow(dead_code)]
-    pub async fn send_direct(&mut self, dest: &str, message: &str) -> Result<()> {
-        let cmd = format!("SEND {} {}", dest, message);
-        match self.command(&cmd).await? {
-            Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to SEND"),
-        }
-    }
-
     /// Send a trace packet.
     pub async fn trace(&mut self, target: &str) -> Result<TraceResult> {
         let cmd = format!("TRACE {}", target);
@@ -438,7 +427,7 @@ impl Protocol {
                     from: parts[1].to_string(),
                     to: if parts[2] == "*" { None } else { Some(parts[2].to_string()) },
                     rssi: parts[3].parse().unwrap_or(0),
-                    snr: parts[4].parse().unwrap_or(0),
+                    // snr: parts[4] - ignored
                     text: parts[5].to_string(),
                 }));
             }
@@ -569,31 +558,6 @@ impl Protocol {
         }
     }
 
-    /// Get log entries (reads multiple lines until "OK").
-    pub async fn get_log(&mut self) -> Result<Vec<String>> {
-        // Send LOG command
-        self.port.write_line("LOG").await?;
-
-        // Read all log lines until we see "OK"
-        let mut logs = Vec::new();
-        loop {
-            if let Some(line) = self.port.read_line_timeout(CMD_TIMEOUT).await? {
-                if line == "OK" {
-                    break;
-                }
-                // Sanitize line for safe piping (replace control chars with .)
-                let sanitized = line.chars()
-                    .map(|c| if c.is_control() && c != '\n' && c != '\r' { '.' } else { c })
-                    .collect::<String>();
-                logs.push(sanitized);
-            } else {
-                bail!("Timeout waiting for log entries");
-            }
-        }
-
-        Ok(logs)
-    }
-
     /// Receive a raw packet (waits for incoming packet).
     pub async fn recv_packet(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>> {
         // Use read_response with custom timeout
@@ -632,7 +596,6 @@ pub enum MonitorEvent {
         from: String,
         to: Option<String>,
         rssi: i16,
-        snr: i8,
         text: String,
     },
     Advertisement {

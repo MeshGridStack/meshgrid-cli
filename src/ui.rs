@@ -161,8 +161,8 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
                     match result {
                         Ok(Some(event)) => {
                             let _ = tx_event.send(match event {
-                                MonitorEvent::Message { from, to, rssi, snr, text } => {
-                                    MeshEvent::Message { from, to, text, rssi, snr }
+                                MonitorEvent::Message { from, to, rssi, text } => {
+                                    MeshEvent::Message { from, to, text, rssi }
                                 }
                                 MonitorEvent::Advertisement { node_hash, rssi, name } => {
                                     MeshEvent::Advertisement { node_hash, rssi, name }
@@ -234,7 +234,7 @@ async fn run_ui_loop(
         while let Ok(event) = rx_event.try_recv() {
             let mut app = app.lock().unwrap();
             match event {
-                MeshEvent::Message { from, to, text, rssi, snr: _ } => {
+                MeshEvent::Message { from, to, text, rssi } => {
                     let dest = to.as_deref().unwrap_or("all");
                     app.add_received(&from, &format!("[->{}] {}", dest, text), rssi);
                 }

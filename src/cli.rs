@@ -49,9 +49,6 @@ pub enum Commands {
         message: String,
     },
 
-    /// Monitor mesh traffic in real-time
-    Monitor,
-
     /// Interactive terminal UI
     Ui,
 
@@ -107,12 +104,6 @@ pub enum Commands {
     Time {
         #[command(subcommand)]
         action: Option<TimeAction>,
-    },
-
-    /// Manage event log
-    Log {
-        #[command(subcommand)]
-        action: Option<LogAction>,
     },
 
     /// Manage message inbox
@@ -231,21 +222,6 @@ pub enum TimeAction {
     Set {
         time: String,
     },
-}
-
-#[derive(Subcommand)]
-pub enum LogAction {
-    /// Show event log
-    Show,
-
-    /// Enable event logging
-    Enable,
-
-    /// Disable event logging
-    Disable,
-
-    /// Clear event log
-    Clear,
 }
 
 #[derive(Subcommand)]

@@ -20,19 +20,37 @@ use commands::{
     // Info commands
     cmd_info, cmd_stats, cmd_neighbors, cmd_telemetry,
     // Messaging commands
-    cmd_send, cmd_monitor, cmd_messages, cmd_channels, cmd_rotate_identity,
+    cmd_send, cmd_messages, cmd_channels, cmd_rotate_identity,
     // Config commands
     cmd_config,
     // Network commands
     cmd_trace, cmd_advert, cmd_raw, cmd_recv,
     // System commands
-    cmd_reboot, cmd_ui, cmd_mode, cmd_time, cmd_log, cmd_flash, cmd_debug,
+    cmd_reboot, cmd_ui, cmd_mode, cmd_time, cmd_flash, cmd_debug,
     // Utility commands
     cmd_list_ports, require_port,
 };
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // When running without a TTY (e.g., subprocess, cron, systemd),
+    // stdin might block tokio's reactor. Set it to non-blocking mode.
+    #[cfg(unix)]
+    unsafe {
+        use std::os::unix::io::AsRawFd;
+        use std::io::IsTerminal;
+
+        // Only modify stdin if it's NOT a terminal
+        if !std::io::stdin().is_terminal() {
+            let stdin_fd = std::io::stdin().as_raw_fd();
+            let flags = libc::fcntl(stdin_fd, libc::F_GETFL, 0);
+            if flags >= 0 && (flags & libc::O_NONBLOCK) == 0 {
+                // stdin is blocking - make it non-blocking to prevent reactor stalls
+                let _ = libc::fcntl(stdin_fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+        }
+    }
+
     let cli = Cli::parse();
 
     // Initialize logging
@@ -53,10 +71,6 @@ async fn main() -> Result<()> {
         Commands::Send { to, channel, message } => {
             let port = require_port(&cli.port)?;
             cmd_send(&port, cli.baud, cli.pin.as_deref(), to.as_deref(), channel.as_deref(), &message).await?;
-        }
-        Commands::Monitor => {
-            let port = require_port(&cli.port)?;
-            cmd_monitor(&port, cli.baud, cli.pin.as_deref()).await?;
         }
         Commands::Ui => {
             let port = require_port(&cli.port)?;
@@ -105,10 +119,6 @@ async fn main() -> Result<()> {
         Commands::Time { action } => {
             let port = require_port(&cli.port)?;
             cmd_time(&port, cli.baud, cli.pin.as_deref(), action).await?;
-        }
-        Commands::Log { action } => {
-            let port = require_port(&cli.port)?;
-            cmd_log(&port, cli.baud, cli.pin.as_deref(), action).await?;
         }
         Commands::Messages { action } => {
             let port = require_port(&cli.port)?;

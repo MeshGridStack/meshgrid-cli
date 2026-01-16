@@ -3,7 +3,7 @@
 use anyhow::{Result, bail};
 use crate::device::Device;
 use crate::protocol::Response;
-use crate::cli::{TimeAction, LogAction, BoardType};
+use crate::cli::{TimeAction, BoardType};
 
 pub async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
     let mut dev = Device::connect(port, baud).await?;
@@ -74,70 +74,6 @@ pub async fn cmd_time(port: &str, baud: u32, pin: Option<&str>, action: Option<T
         Response::Error(e) => bail!("Failed to set time: {}", e),
         _ => bail!("Unexpected response to time command"),
     }
-}
-
-pub async fn cmd_log(port: &str, baud: u32, pin: Option<&str>, action: Option<LogAction>) -> Result<()> {
-    let dev = super::connect_with_auth(port, baud, pin).await?;
-    let mut proto = dev.into_protocol();
-
-    let action = action.unwrap_or(LogAction::Show);
-
-    match action {
-        LogAction::Show => {
-            // Use special get_log method that reads multiple lines
-            let logs = proto.get_log().await?;
-            for log in logs {
-                println!("{}", log);
-            }
-        }
-        LogAction::Enable => {
-            match proto.command("LOG ENABLE").await? {
-                Response::Ok(data) => {
-                    if let Some(output) = data {
-                        println!("{}", output);
-                    }
-                }
-                Response::Error(e) => {
-                    bail!("Device error: {}", e);
-                }
-                _ => {
-                    bail!("Unexpected response to LOG ENABLE");
-                }
-            }
-        }
-        LogAction::Disable => {
-            match proto.command("LOG DISABLE").await? {
-                Response::Ok(data) => {
-                    if let Some(output) = data {
-                        println!("{}", output);
-                    }
-                }
-                Response::Error(e) => {
-                    bail!("Device error: {}", e);
-                }
-                _ => {
-                    bail!("Unexpected response to LOG DISABLE");
-                }
-            }
-        }
-        LogAction::Clear => {
-            match proto.command("LOG CLEAR").await? {
-                Response::Ok(data) => {
-                    if let Some(output) = data {
-                        println!("{}", output);
-                    }
-                }
-                Response::Error(e) => {
-                    bail!("Device error: {}", e);
-                }
-                _ => {
-                    bail!("Unexpected response to LOG CLEAR");
-                }
-            }
-        }
-    }
-
-    Ok(())
 }
 
 pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeout_secs: u64) -> Result<()> {

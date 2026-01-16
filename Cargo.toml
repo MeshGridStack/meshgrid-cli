@@ -37,6 +37,7 @@ ctrlc = "3.4"
 
 # Firmware flashing
 espflash = "3.0"
+libc = "0.2.180"
 
 [dev-dependencies]
 tempfile = "3.9"

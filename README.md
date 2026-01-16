@@ -182,10 +182,46 @@ Requires [PlatformIO](https://platformio.org/): `pip install platformio`
 ### Debugging
 
 ```bash
-meshgrid-cli debug                            # Read raw serial output (30s)
-meshgrid-cli debug --timeout 60               # Custom timeout
-meshgrid-cli ui                               # Interactive terminal UI
+# Stream debug output to stdout
+meshgrid-cli debug
+
+# Save debug output to file (recommended)
+meshgrid-cli debug -o debug.log
+
+# Custom timeout (0 = infinite)
+meshgrid-cli debug -o debug.log --timeout 0
+
+# Interactive terminal UI
+meshgrid-cli ui
 ```
+
+**Important:** The `debug` command keeps the serial port open continuously. You have two options:
+
+**Option 1: Use two devices**
+```bash
+# Terminal 1: Capture debug from device 1
+meshgrid-cli -p /dev/ttyUSB0 debug -o heltec.log
+
+# Terminal 2: Send commands to device 2
+meshgrid-cli -p /dev/ttyACM0 advert
+meshgrid-cli -p /dev/ttyACM0 send "test"
+```
+
+**Option 2: Use separate terminals (same device)**
+```bash
+# Terminal 1: Capture debug output
+meshgrid-cli -p /dev/ttyUSB0 debug -o debug.log
+
+# Terminal 2: Stop debug (Ctrl+C in Terminal 1), then run commands
+meshgrid-cli -p /dev/ttyUSB0 advert
+```
+
+**Debug output includes:**
+- TX/RX packet details
+- Protocol version detection (v0/v1)
+- Encryption/decryption status
+- Advertisement processing
+- Error messages with detailed codes
 
 ### Port Selection
 
@@ -217,7 +253,9 @@ meshgrid-cli send "test" && meshgrid-cli messages
 
 # Debug radio issues
 meshgrid-cli stats
-meshgrid-cli debug
+
+# Capture debug logs during testing (separate terminal)
+meshgrid-cli debug -o test-session.log
 ```
 
 ### Network Diagnostics
@@ -281,6 +319,22 @@ meshgrid-cli debug --timeout 10
 
 # Try different baud rate
 meshgrid-cli -b 115200 info
+```
+
+### Serial Port Busy
+
+Only one process can access a serial port at a time:
+
+```bash
+# Error: Device or resource busy
+
+# Solution 1: Stop other programs using the port
+pkill -f ttyUSB0
+
+# Solution 2: Use a different device port
+meshgrid-cli -p /dev/ttyACM0 info
+
+# Solution 3: Stop debug capture (Ctrl+C) before running commands
 ```
 
 ### PIN Authentication Failed

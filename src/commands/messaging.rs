@@ -48,37 +48,6 @@ pub async fn cmd_send(port: &str, baud: u32, pin: Option<&str>, to: Option<&str>
     Ok(())
 }
 
-/// Monitor mesh traffic in real-time
-pub async fn cmd_monitor(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
-    let mut dev = connect_with_auth(port, baud, pin).await?;
-
-    println!("Monitoring mesh traffic (Ctrl+C to stop)...\n");
-
-    dev.monitor(|event| {
-        let timestamp = chrono::Local::now().format("%H:%M:%S");
-        match event {
-            crate::device::MeshEvent::Message { from, to, text, rssi, snr } => {
-                let dest = to.as_deref().unwrap_or("broadcast");
-                println!("[{}] MSG {} -> {}: \"{}\" (RSSI:{} SNR:{})",
-                    timestamp, from, dest, text, rssi, snr);
-            }
-            crate::device::MeshEvent::Advertisement { name, node_hash, rssi } => {
-                let name = name.as_deref().unwrap_or("?");
-                println!("[{}] ADV 0x{:02x} \"{}\" (RSSI:{})",
-                    timestamp, node_hash, name, rssi);
-            }
-            crate::device::MeshEvent::Ack { from } => {
-                println!("[{}] ACK from {}", timestamp, from);
-            }
-            crate::device::MeshEvent::Error { message } => {
-                eprintln!("[{}] ERR: {}", timestamp, message);
-            }
-        }
-    }).await?;
-
-    Ok(())
-}
-
 /// Manage inbox messages
 pub async fn cmd_messages(port: &str, baud: u32, pin: Option<&str>, action: Option<MessagesAction>) -> Result<()> {
     let dev = connect_with_auth(port, baud, pin).await?;

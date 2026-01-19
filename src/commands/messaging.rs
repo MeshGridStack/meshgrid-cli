@@ -26,8 +26,12 @@ pub async fn cmd_send(port: &str, baud: u32, pin: Option<&str>, to: Option<&str>
         println!("Sending to {}: {}", dest, message);
         let cmd = format!("SEND {} {}", dest, message);
         match proto.command(&cmd).await? {
-            Response::Ok(_) => {
-                println!("Sent!");
+            Response::Ok(msg) => {
+                if let Some(m) = msg {
+                    println!("Sent! ({})", m);
+                } else {
+                    println!("Sent!");
+                }
             }
             Response::Error(e) => bail!("Device error: {}", e),
             _ => bail!("Unexpected response to SEND"),
@@ -83,8 +87,20 @@ pub async fn cmd_messages(port: &str, baud: u32, pin: Option<&str>, action: Opti
 
                             let lock = if decrypted { " " } else { "🔒" };
 
+                            // Calculate time ago (current Unix time - message timestamp)
+                            let current_unix_time = chrono::Local::now().timestamp() as u64;
+                            let msg_timestamp = timestamp;  // Already in seconds
+
+                            eprintln!("DEBUG: current_unix={}, msg_timestamp={}", current_unix_time, msg_timestamp);
+
+                            let ago_secs = if current_unix_time > msg_timestamp {
+                                current_unix_time - msg_timestamp
+                            } else {
+                                0  // Future message or clock skew
+                            };
+
                             println!("  [{}s] {} from {} ({}/{protocol}): {}",
-                                     timestamp / 1000,
+                                     ago_secs,
                                      lock,
                                      from_name,
                                      channel_str,

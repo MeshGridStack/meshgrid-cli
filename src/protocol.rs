@@ -152,6 +152,7 @@ pub struct DeviceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NeighborInfo {
     pub node_hash: u8,
+    pub protocol_version: Option<u8>,
     pub name: Option<String>,
     pub public_key: Option<[u8; 32]>,
     pub rssi: i16,

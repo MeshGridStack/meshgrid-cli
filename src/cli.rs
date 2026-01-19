@@ -218,6 +218,9 @@ pub enum TimeAction {
     /// Show current time
     Show,
 
+    /// Sync time with computer
+    Sync,
+
     /// Set time (YYYY-MM-DD HH:MM:SS)
     Set {
         time: String,

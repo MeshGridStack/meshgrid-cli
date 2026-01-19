@@ -112,6 +112,7 @@ impl Device {
                 snr: n.snr,
                 last_seen_secs: n.last_seen_secs,
                 firmware: n.firmware,
+                protocol_version: n.protocol_version.unwrap_or(0),
             })
             .collect())
     }
@@ -186,6 +187,7 @@ pub struct NeighborInfo {
     pub snr: i8,
     pub last_seen_secs: u32,
     pub firmware: Option<String>,
+    pub protocol_version: u8,
 }
 
 /// Trace result.

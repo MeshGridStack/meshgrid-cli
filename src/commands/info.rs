@@ -210,14 +210,14 @@ pub async fn cmd_neighbors(port: &str, baud: u32, pin: Option<&str>) -> Result<(
     }
 
     println!("Neighbor Table ({} nodes):\n", neighbors.len());
-    println!("  {:8} {:16} {:6} {:6} {:12} {:8}", "Hash", "Name", "RSSI", "SNR", "Firmware", "Last Seen");
-    println!("  {:-<8} {:-<16} {:-<6} {:-<6} {:-<12} {:-<8}", "", "", "", "", "", "");
+    println!("  {:8} {:4} {:16} {:6} {:6} {:12} {:8}", "Hash", "Ver", "Name", "RSSI", "SNR", "Firmware", "Last Seen");
+    println!("  {:-<8} {:-<4} {:-<16} {:-<6} {:-<6} {:-<12} {:-<8}", "", "", "", "", "", "", "");
 
     for n in neighbors {
         let name = n.name.unwrap_or_else(|| "?".into());
         let firmware = n.firmware.unwrap_or_else(|| "unknown".into());
-        println!("  0x{:02x}     {:16} {:6} {:6} {:12} {}s ago",
-            n.node_hash, name, n.rssi, n.snr, firmware, n.last_seen_secs);
+        println!("  0x{:02x}     v{:<3} {:16} {:6} {:6} {:12} {}s ago",
+            n.node_hash, n.protocol_version, name, n.rssi, n.snr, firmware, n.last_seen_secs);
     }
 
     Ok(())

@@ -50,29 +50,51 @@ pub async fn cmd_time(port: &str, baud: u32, pin: Option<&str>, action: Option<T
 
     let action = action.unwrap_or(TimeAction::Show);
 
-    let time_str = match action {
+    match action {
         TimeAction::Show => {
+            // Query device time
+            match proto.command("TIME").await? {
+                Response::Ok(msg) => {
+                    println!("{}", msg.unwrap_or_else(|| "Device time not set".to_string()));
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to get time: {}", e),
+                _ => bail!("Unexpected response to TIME"),
+            }
+        }
+        TimeAction::Sync => {
             // Sync with computer's current time
-            Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+            let time_str = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let command = format!("/time {}", time_str);
+            match proto.command(&command).await? {
+                Response::Ok(msg) => {
+                    if let Some(m) = msg {
+                        println!("{}", m);
+                    } else {
+                        println!("Time synced: {}", time_str);
+                    }
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to sync time: {}", e),
+                _ => bail!("Unexpected response to time sync"),
+            }
         }
         TimeAction::Set { time } => {
-            // Use provided time string
-            time
-        }
-    };
-
-    let command = format!("/time {}", time_str);
-    match proto.command(&command).await? {
-        Response::Ok(msg) => {
-            if let Some(m) = msg {
-                println!("{}", m);
-            } else {
-                println!("Time synced: {}", time_str);
+            // Set device time to specific value
+            let command = format!("/time {}", time);
+            match proto.command(&command).await? {
+                Response::Ok(msg) => {
+                    if let Some(m) = msg {
+                        println!("{}", m);
+                    } else {
+                        println!("Time set: {}", time);
+                    }
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to set time: {}", e),
+                _ => bail!("Unexpected response to time set"),
             }
-            Ok(())
         }
-        Response::Error(e) => bail!("Failed to set time: {}", e),
-        _ => bail!("Unexpected response to time command"),
     }
 }
 

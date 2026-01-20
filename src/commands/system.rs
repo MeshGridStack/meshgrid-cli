@@ -630,7 +630,7 @@ pub async fn cmd_flash(
             .ok_or_else(|| {
                 anyhow::anyhow!(
                     "Could not find meshgrid-firmware directory.\n\
-                 Use --local <path> or clone https://github.com/BetterInc/meshgrid-firmware"
+                 Use --local <path> or clone https://github.com/MeshGridStack/meshgrid-firmware"
                 )
             })?
     };

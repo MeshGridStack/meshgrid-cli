@@ -4,6 +4,8 @@ version = "0.0.1"
 edition = "2021"
 description = "CLI tool for meshgrid mesh networking"
 license = "MIT"
+repository = "https://github.com/MeshGridStack/meshgrid-cli"
+homepage = "https://github.com/MeshGridStack/meshgrid-cli"
 
 [dependencies]
 # Serial port communication

@@ -46,6 +46,6 @@ pub fn require_port(port: Option<&String>) -> Result<String> {
     }
 
     anyhow::bail!(
-        "No port specified and no device auto-detected.\nUse -p /dev/ttyUSB0 or run 'meshgrid ports' to list available ports"
+        "No port specified and no device auto-detected.\nUse -p /dev/ttyUSB0 (Linux) or -p COM3 (Windows) or run 'meshgrid-cli ports' to list available ports"
     )
 }

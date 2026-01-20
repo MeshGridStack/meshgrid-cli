@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[command(name = "meshgrid")]
 #[command(author, version, about = "Meshgrid mesh networking CLI", long_about = None)]
 pub struct Cli {
-    /// Serial port device (e.g., /dev/ttyUSB0, /dev/ttyACM0)
+    /// Serial port device (e.g., /dev/ttyUSB0 on Linux, COM3 on Windows)
     #[arg(short, long, global = true)]
     pub port: Option<String>,
 
@@ -95,7 +95,7 @@ pub enum Commands {
 
     /// Set device mode
     Mode {
-        /// Mode (client or repeater)
+        /// Mode (client, repeater, or room)
         #[arg(value_enum)]
         mode: DeviceMode,
     },
@@ -234,6 +234,7 @@ pub enum ChannelsAction {
 pub enum DeviceMode {
     Client,
     Repeater,
+    Room,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]

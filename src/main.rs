@@ -141,6 +141,7 @@ async fn main() -> Result<()> {
             let mode_str = match mode {
                 cli::DeviceMode::Client => "client",
                 cli::DeviceMode::Repeater => "repeater",
+                cli::DeviceMode::Room => "room",
             };
             cmd_mode(&port, cli.baud, cli.pin.as_deref(), mode_str).await?;
         }

@@ -21,7 +21,7 @@ Command-line tool for managing MeshGrid LoRa mesh networking devices over USB se
 ### From Source
 
 ```bash
-git clone https://github.com/BetterInc/meshgrid-cli
+git clone https://github.com/MeshGridStack/meshgrid-cli
 cd meshgrid-cli
 cargo build --release
 # Binary at: ./target/release/meshgrid-cli
@@ -47,9 +47,6 @@ meshgrid-cli send "Hello mesh!"
 
 # Send a direct message
 meshgrid-cli send --to "Alice" "Private message"
-
-# Monitor mesh traffic in real-time
-meshgrid-cli monitor
 
 # View neighbor table
 meshgrid-cli neighbors
@@ -109,7 +106,7 @@ meshgrid-cli config spreading-factor 7        # Set spreading factor
 ```bash
 meshgrid-cli send "Hello mesh!"               # Broadcast message
 meshgrid-cli send --to "Alice" "Hi Alice"     # Direct message
-meshgrid-cli monitor                          # Monitor all mesh traffic
+meshgrid-cli send --channel "test" "Message"  # Send to channel
 meshgrid-cli messages                         # Show inbox
 meshgrid-cli messages clear                   # Clear inbox
 meshgrid-cli channels                         # List channels
@@ -130,15 +127,14 @@ meshgrid-cli recv --timeout 30                # Receive raw packets
 
 ```bash
 meshgrid-cli reboot                           # Reboot device
-meshgrid-cli mode client                      # Set device mode
-meshgrid-cli mode repeater                    # Set as repeater
-meshgrid-cli time                             # Sync device time
+meshgrid-cli mode client                      # Set device mode (client)
+meshgrid-cli mode repeater                    # Set device mode (repeater)
+meshgrid-cli mode room                        # Set device mode (room)
+meshgrid-cli time show                        # Show current device time
+meshgrid-cli time sync                        # Sync time with computer
 meshgrid-cli time set "2026-01-12 15:30:00"   # Set specific time
-meshgrid-cli log                              # Show event log
-meshgrid-cli log enable                       # Enable logging
-meshgrid-cli log disable                      # Disable logging
-meshgrid-cli log clear                        # Clear log
 meshgrid-cli rotate-identity                  # Generate new keypair
+meshgrid-cli ui                               # Launch interactive terminal UI
 ```
 
 ### Firmware Flashing
@@ -229,9 +225,13 @@ meshgrid-cli -p /dev/ttyUSB0 advert
 # Auto-detect (default)
 meshgrid-cli info
 
-# Specify port
+# Specify port (Linux/macOS)
 meshgrid-cli -p /dev/ttyUSB0 info
 meshgrid-cli -p /dev/ttyACM0 info
+
+# Specify port (Windows)
+meshgrid-cli -p COM3 info
+meshgrid-cli -p COM12 info
 
 # Custom baud rate
 meshgrid-cli -b 921600 info
@@ -242,9 +242,6 @@ meshgrid-cli -b 921600 info
 ### Development & Testing
 
 ```bash
-# Monitor all traffic while testing
-meshgrid-cli monitor
-
 # Check signal quality
 meshgrid-cli neighbors
 
@@ -267,9 +264,6 @@ meshgrid-cli stats
 
 # Test connectivity
 meshgrid-cli trace "remote-node"
-
-# Monitor for interference
-meshgrid-cli monitor
 
 # Check device status
 meshgrid-cli telemetry
@@ -452,11 +446,10 @@ MIT
 
 ## Related Projects
 
-- [meshgrid-firmware](https://github.com/BetterInc/meshgrid-firmware) - MeshGrid device firmware
-- [MeshCore](https://github.com/meshtastic/firmware) - Reference implementation
+- [meshgrid-firmware](https://github.com/MeshGridStack/meshgrid-firmware) - MeshGrid device firmware
 
 ## Support
 
-- Issues: [GitHub Issues](https://github.com/BetterInc/meshgrid-cli/issues)
+- Issues: [GitHub Issues](https://github.com/MeshGridStack/meshgrid-cli/issues)
 - Documentation: See `docs/` folder
 - Community: [Discord/Forum link]

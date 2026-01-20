@@ -1,6 +1,6 @@
-//! MeshCore serial protocol implementation.
+//! `MeshCore` serial protocol implementation.
 //!
-//! This module implements the command protocol used by MeshCore firmware
+//! This module implements the command protocol used by `MeshCore` firmware
 //! for USB serial communication. Commands are text-based for simplicity.
 //!
 //! ## Command Format
@@ -44,9 +44,15 @@ pub struct DeviceTelemetry {
 }
 
 impl DeviceTelemetry {
-    pub fn new() -> Self { Self::default() }
-    pub fn cpu_temp_celsius(&self) -> f32 { self.cpu_temp_deci_c as f32 / 10.0 }
-    pub fn voltage(&self) -> f32 { self.voltage_mv as f32 / 1000.0 }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn cpu_temp_celsius(&self) -> f32 {
+        f32::from(self.cpu_temp_deci_c) / 10.0
+    }
+    pub fn voltage(&self) -> f32 {
+        f32::from(self.voltage_mv) / 1000.0
+    }
 }
 
 /// Environment telemetry data.
@@ -59,13 +65,34 @@ pub struct EnvironmentTelemetry {
 }
 
 impl EnvironmentTelemetry {
-    pub fn new() -> Self { Self::default() }
-    pub fn with_temperature(mut self, t: f32) -> Self { self.temp_deci_c = (t * 10.0) as i16; self }
-    pub fn with_humidity(mut self, h: f32) -> Self { self.humidity_deci_pct = (h * 10.0) as u16; self }
-    pub fn with_pressure_hpa(mut self, p: f32) -> Self { self.pressure_deci_hpa = (p * 10.0) as u32; self }
-    pub fn temperature_celsius(&self) -> f32 { self.temp_deci_c as f32 / 10.0 }
-    pub fn humidity_percent(&self) -> f32 { self.humidity_deci_pct as f32 / 10.0 }
-    pub fn pressure_hpa(&self) -> f32 { self.pressure_deci_hpa as f32 / 10.0 }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn with_temperature(mut self, t: f32) -> Self {
+        self.temp_deci_c = (t * 10.0) as i16;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn with_humidity(mut self, h: f32) -> Self {
+        self.humidity_deci_pct = (h * 10.0) as u16;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn with_pressure_hpa(mut self, p: f32) -> Self {
+        self.pressure_deci_hpa = (p * 10.0) as u32;
+        self
+    }
+    pub fn temperature_celsius(&self) -> f32 {
+        f32::from(self.temp_deci_c) / 10.0
+    }
+    pub fn humidity_percent(&self) -> f32 {
+        f32::from(self.humidity_deci_pct) / 10.0
+    }
+    #[allow(clippy::cast_precision_loss)]
+    pub fn pressure_hpa(&self) -> f32 {
+        self.pressure_deci_hpa as f32 / 10.0
+    }
 }
 
 /// Location telemetry data.
@@ -81,18 +108,53 @@ pub struct LocationTelemetry {
 }
 
 impl LocationTelemetry {
-    pub fn new() -> Self { Self::default() }
-    pub fn with_latitude(mut self, lat: f64) -> Self { self.lat_micro = (lat * 1_000_000.0) as i32; self }
-    pub fn with_longitude(mut self, lon: f64) -> Self { self.lon_micro = (lon * 1_000_000.0) as i32; self }
-    pub fn with_altitude(mut self, alt: f32) -> Self { self.alt_cm = (alt * 100.0) as i32; self }
-    pub fn with_speed(mut self, spd: f32) -> Self { self.speed_cm_s = (spd * 100.0) as u16; self }
-    pub fn with_heading(mut self, hdg: f32) -> Self { self.heading_deci = (hdg * 10.0) as u16; self }
-    pub fn has_fix(&self) -> bool { self.fix_type > 0 }
-    pub fn latitude(&self) -> f64 { self.lat_micro as f64 / 1_000_000.0 }
-    pub fn longitude(&self) -> f64 { self.lon_micro as f64 / 1_000_000.0 }
-    pub fn altitude_meters(&self) -> f32 { self.alt_cm as f32 / 100.0 }
-    pub fn speed_m_s(&self) -> f32 { self.speed_cm_s as f32 / 100.0 }
-    pub fn heading_degrees(&self) -> f32 { self.heading_deci as f32 / 10.0 }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn with_latitude(mut self, lat: f64) -> Self {
+        self.lat_micro = (lat * 1_000_000.0) as i32;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn with_longitude(mut self, lon: f64) -> Self {
+        self.lon_micro = (lon * 1_000_000.0) as i32;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation)]
+    pub fn with_altitude(mut self, alt: f32) -> Self {
+        self.alt_cm = (alt * 100.0) as i32;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn with_speed(mut self, spd: f32) -> Self {
+        self.speed_cm_s = (spd * 100.0) as u16;
+        self
+    }
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    pub fn with_heading(mut self, hdg: f32) -> Self {
+        self.heading_deci = (hdg * 10.0) as u16;
+        self
+    }
+    pub fn has_fix(&self) -> bool {
+        self.fix_type > 0
+    }
+    pub fn latitude(&self) -> f64 {
+        f64::from(self.lat_micro) / 1_000_000.0
+    }
+    pub fn longitude(&self) -> f64 {
+        f64::from(self.lon_micro) / 1_000_000.0
+    }
+    #[allow(clippy::cast_precision_loss)]
+    pub fn altitude_meters(&self) -> f32 {
+        self.alt_cm as f32 / 100.0
+    }
+    pub fn speed_m_s(&self) -> f32 {
+        f32::from(self.speed_cm_s) / 100.0
+    }
+    pub fn heading_degrees(&self) -> f32 {
+        f32::from(self.heading_deci) / 10.0
+    }
 }
 
 /// Combined telemetry.
@@ -104,10 +166,21 @@ pub struct Telemetry {
 }
 
 impl Telemetry {
-    pub fn new() -> Self { Self::default() }
-    pub fn with_device(mut self, d: DeviceTelemetry) -> Self { self.device = Some(d); self }
-    pub fn with_environment(mut self, e: EnvironmentTelemetry) -> Self { self.environment = Some(e); self }
-    pub fn with_location(mut self, l: LocationTelemetry) -> Self { self.location = Some(l); self }
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn with_device(mut self, d: DeviceTelemetry) -> Self {
+        self.device = Some(d);
+        self
+    }
+    pub fn with_environment(mut self, e: EnvironmentTelemetry) -> Self {
+        self.environment = Some(e);
+        self
+    }
+    pub fn with_location(mut self, l: LocationTelemetry) -> Self {
+        self.location = Some(l);
+        self
+    }
 }
 
 /// Command timeout.
@@ -169,7 +242,7 @@ pub struct TraceResult {
     pub rtt_ms: u32,
 }
 
-/// MeshCore protocol handler.
+/// `MeshCore` protocol handler.
 pub struct Protocol {
     port: SerialPort,
 }
@@ -205,9 +278,8 @@ impl Protocol {
             }
 
             // Read COBS frame
-            let frame = match self.port.read_cobs_frame_timeout(CMD_TIMEOUT).await? {
-                Some(frame) => frame,
-                None => bail!("Command timeout"),
+            let Some(frame) = self.port.read_cobs_frame_timeout(CMD_TIMEOUT).await? else {
+                bail!("Command timeout");
             };
 
             // Convert to string
@@ -227,7 +299,7 @@ impl Protocol {
             // Parse response
             if line.starts_with("OK") {
                 let data = line.strip_prefix("OK").map(|s| s.trim().to_string());
-                let data = if data.as_ref().map(|s| s.is_empty()).unwrap_or(true) {
+                let data = if data.as_ref().is_none_or(std::string::String::is_empty) {
                     None
                 } else {
                     data
@@ -246,12 +318,10 @@ impl Protocol {
             } else if line.starts_with("PONG") {
                 // PING response
                 return Ok(Response::Ok(Some(line)));
-            } else {
-                // Skip unrecognized frames
-                tracing::debug!("Skipping unrecognized frame: {:?}", line);
-                skip_count += 1;
-                continue;
             }
+            // Skip unrecognized frames
+            tracing::debug!("Skipping unrecognized frame: {:?}", line);
+            skip_count += 1;
         }
     }
 
@@ -262,8 +332,8 @@ impl Protocol {
                 let info: DeviceInfo = serde_json::from_value(json)?;
                 Ok(info)
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to INFO"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Ok(_) => bail!("Unexpected OK response to INFO"),
         }
     }
 
@@ -274,38 +344,38 @@ impl Protocol {
                 let config: DeviceConfig = serde_json::from_value(json)?;
                 Ok(config)
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to CONFIG"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Ok(_) => bail!("Unexpected OK response to CONFIG"),
         }
     }
 
     /// Set device name.
     pub async fn set_name(&mut self, name: &str) -> Result<()> {
-        let cmd = format!("SET NAME {}", name);
+        let cmd = format!("SET NAME {name}");
         match self.command(&cmd).await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to SET NAME"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to SET NAME"),
         }
     }
 
-    /// Set LoRa frequency.
+    /// Set `LoRa` frequency.
     pub async fn set_frequency(&mut self, freq_mhz: f32) -> Result<()> {
-        let cmd = format!("SET FREQ {:.2}", freq_mhz);
+        let cmd = format!("SET FREQ {freq_mhz:.2}");
         match self.command(&cmd).await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to SET FREQ"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to SET FREQ"),
         }
     }
 
     /// Set TX power.
     pub async fn set_power(&mut self, dbm: i8) -> Result<()> {
-        let cmd = format!("SET POWER {}", dbm);
+        let cmd = format!("SET POWER {dbm}");
         match self.command(&cmd).await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to SET POWER"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to SET POWER"),
         }
     }
 
@@ -316,32 +386,32 @@ impl Protocol {
                 let neighbors: Vec<NeighborInfo> = serde_json::from_value(json)?;
                 Ok(neighbors)
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to NEIGHBORS"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Ok(_) => bail!("Unexpected OK response to NEIGHBORS"),
         }
     }
 
     /// Send a broadcast message.
     pub async fn send_broadcast(&mut self, message: &str) -> Result<()> {
-        let cmd = format!("SEND {}", message);
+        let cmd = format!("SEND {message}");
         match self.command(&cmd).await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to SEND"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to SEND"),
         }
     }
 
     /// Send a trace packet.
     pub async fn trace(&mut self, target: &str) -> Result<TraceResult> {
-        let cmd = format!("TRACE {}", target);
+        let cmd = format!("TRACE {target}");
 
         // Send command and get initial response (status="sent")
         match self.command(&cmd).await? {
             Response::Json(_) => {
                 // Initial "sent" response - now wait for trace_response
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to TRACE"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Ok(_) => bail!("Unexpected OK response to TRACE"),
         }
 
         // Wait for trace_response with timeout (max 10 seconds)
@@ -354,29 +424,44 @@ impl Protocol {
             }
 
             // Read a line
-            match self.port.read_line_timeout(Duration::from_millis(500)).await? {
+            match self
+                .port
+                .read_line_timeout(Duration::from_millis(500))
+                .await?
+            {
                 Some(line) => {
                     // Try to parse as JSON
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                         // Check if it's a trace_response
                         if json.get("type").and_then(|v| v.as_str()) == Some("trace_response") {
                             // Extract path
-                            let path = json.get("path")
+                            let path = json
+                                .get("path")
                                 .and_then(|v| v.as_array())
-                                .map(|arr| arr.iter()
-                                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                    .collect())
+                                .map(|arr| {
+                                    arr.iter()
+                                        .filter_map(|v| {
+                                            v.as_str().map(std::string::ToString::to_string)
+                                        })
+                                        .collect()
+                                })
                                 .unwrap_or_default();
 
                             // Extract hop count
-                            let hop_count = json.get("hops")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0) as u8;
+                            let hop_count = u8::try_from(
+                                json.get("hops")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .unwrap_or(0),
+                            )
+                            .unwrap_or(0);
 
                             // Extract RTT if available
-                            let rtt_ms = json.get("rtt_ms")
-                                .and_then(|v| v.as_u64())
-                                .unwrap_or(0) as u32;
+                            let rtt_ms = u32::try_from(
+                                json.get("rtt_ms")
+                                    .and_then(serde_json::Value::as_u64)
+                                    .unwrap_or(0),
+                            )
+                            .unwrap_or(0);
 
                             return Ok(TraceResult {
                                 path,
@@ -398,8 +483,8 @@ impl Protocol {
     pub async fn reboot(&mut self) -> Result<()> {
         match self.command("REBOOT").await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to REBOOT"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to REBOOT"),
         }
     }
 
@@ -407,16 +492,19 @@ impl Protocol {
     pub async fn enter_monitor_mode(&mut self) -> Result<()> {
         match self.command("MONITOR").await? {
             Response::Ok(_) => Ok(()),
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to MONITOR"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to MONITOR"),
         }
     }
 
     /// Read next event in monitor mode.
     pub async fn read_event(&mut self) -> Result<Option<MonitorEvent>> {
-        let line = match self.port.read_line_timeout(Duration::from_millis(100)).await? {
-            Some(line) => line,
-            None => return Ok(None),
+        let Some(line) = self
+            .port
+            .read_line_timeout(Duration::from_millis(100))
+            .await?
+        else {
+            return Ok(None);
         };
 
         // Parse event
@@ -426,7 +514,11 @@ impl Protocol {
             if parts.len() >= 6 {
                 return Ok(Some(MonitorEvent::Message {
                     from: parts[1].to_string(),
-                    to: if parts[2] == "*" { None } else { Some(parts[2].to_string()) },
+                    to: if parts[2] == "*" {
+                        None
+                    } else {
+                        Some(parts[2].to_string())
+                    },
                     rssi: parts[3].parse().unwrap_or(0),
                     // snr: parts[4] - ignored
                     text: parts[5].to_string(),
@@ -440,7 +532,7 @@ impl Protocol {
                 return Ok(Some(MonitorEvent::Advertisement {
                     node_hash: hash,
                     rssi: parts[2].parse().unwrap_or(0),
-                    name: parts.get(3).map(|s| s.to_string()),
+                    name: parts.get(3).map(std::string::ToString::to_string),
                 }));
             }
         } else if line.starts_with("ACK ") {
@@ -468,8 +560,8 @@ impl Protocol {
                 }
                 Ok(())
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to PKT"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Json(_) => bail!("Unexpected response to PKT"),
         }
     }
 
@@ -483,26 +575,30 @@ impl Protocol {
                 // Device telemetry
                 if let Some(dev) = json.get("device") {
                     let mut dt = DeviceTelemetry::new();
-                    if let Some(b) = dev.get("battery").and_then(|v| v.as_u64()) {
-                        dt.battery_percent = b as u8;
+                    if let Some(b) = dev.get("battery").and_then(serde_json::Value::as_u64) {
+                        dt.battery_percent = u8::try_from(b).unwrap_or(0);
                     }
-                    if let Some(v) = dev.get("voltage").and_then(|v| v.as_f64()) {
-                        dt.voltage_mv = (v * 1000.0) as u16;
+                    if let Some(v) = dev.get("voltage").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                        let voltage_mv = (v * 1000.0) as u16;
+                        dt.voltage_mv = voltage_mv;
                     }
-                    if let Some(c) = dev.get("charging").and_then(|v| v.as_bool()) {
+                    if let Some(c) = dev.get("charging").and_then(serde_json::Value::as_bool) {
                         dt.charging = c;
                     }
-                    if let Some(u) = dev.get("usb").and_then(|v| v.as_bool()) {
+                    if let Some(u) = dev.get("usb").and_then(serde_json::Value::as_bool) {
                         dt.usb_power = u;
                     }
-                    if let Some(up) = dev.get("uptime").and_then(|v| v.as_u64()) {
-                        dt.uptime_secs = up as u32;
+                    if let Some(up) = dev.get("uptime").and_then(serde_json::Value::as_u64) {
+                        dt.uptime_secs = u32::try_from(up).unwrap_or(0);
                     }
-                    if let Some(heap) = dev.get("heap").and_then(|v| v.as_u64()) {
-                        dt.free_heap = heap as u32;
+                    if let Some(heap) = dev.get("heap").and_then(serde_json::Value::as_u64) {
+                        dt.free_heap = u32::try_from(heap).unwrap_or(0);
                     }
-                    if let Some(temp) = dev.get("cpu_temp").and_then(|v| v.as_f64()) {
-                        dt.cpu_temp_deci_c = (temp * 10.0) as i16;
+                    if let Some(temp) = dev.get("cpu_temp").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let cpu_temp = (temp * 10.0) as i16;
+                        dt.cpu_temp_deci_c = cpu_temp;
                     }
                     telem = telem.with_device(dt);
                 }
@@ -510,17 +606,23 @@ impl Protocol {
                 // Environment telemetry
                 if let Some(env) = json.get("environment") {
                     let mut et = EnvironmentTelemetry::new();
-                    if let Some(t) = env.get("temperature").and_then(|v| v.as_f64()) {
-                        et = et.with_temperature(t as f32);
+                    if let Some(t) = env.get("temperature").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let temp = t as f32;
+                        et = et.with_temperature(temp);
                     }
-                    if let Some(h) = env.get("humidity").and_then(|v| v.as_f64()) {
-                        et = et.with_humidity(h as f32);
+                    if let Some(h) = env.get("humidity").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let humidity = h as f32;
+                        et = et.with_humidity(humidity);
                     }
-                    if let Some(p) = env.get("pressure").and_then(|v| v.as_f64()) {
-                        et = et.with_pressure_hpa(p as f32);
+                    if let Some(p) = env.get("pressure").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let pressure = p as f32;
+                        et = et.with_pressure_hpa(pressure);
                     }
-                    if let Some(aq) = env.get("air_quality").and_then(|v| v.as_u64()) {
-                        et.air_quality = aq as u16;
+                    if let Some(aq) = env.get("air_quality").and_then(serde_json::Value::as_u64) {
+                        et.air_quality = u16::try_from(aq).unwrap_or(0);
                     }
                     telem = telem.with_environment(et);
                 }
@@ -528,43 +630,48 @@ impl Protocol {
                 // Location telemetry
                 if let Some(loc) = json.get("location") {
                     let mut lt = LocationTelemetry::new();
-                    if let Some(lat) = loc.get("latitude").and_then(|v| v.as_f64()) {
+                    if let Some(lat) = loc.get("latitude").and_then(serde_json::Value::as_f64) {
                         lt = lt.with_latitude(lat);
                     }
-                    if let Some(lon) = loc.get("longitude").and_then(|v| v.as_f64()) {
+                    if let Some(lon) = loc.get("longitude").and_then(serde_json::Value::as_f64) {
                         lt = lt.with_longitude(lon);
                     }
-                    if let Some(alt) = loc.get("altitude").and_then(|v| v.as_f64()) {
-                        lt = lt.with_altitude(alt as f32);
+                    if let Some(alt) = loc.get("altitude").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let altitude = alt as f32;
+                        lt = lt.with_altitude(altitude);
                     }
-                    if let Some(spd) = loc.get("speed").and_then(|v| v.as_f64()) {
-                        lt = lt.with_speed(spd as f32);
+                    if let Some(spd) = loc.get("speed").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let speed = spd as f32;
+                        lt = lt.with_speed(speed);
                     }
-                    if let Some(hdg) = loc.get("heading").and_then(|v| v.as_f64()) {
-                        lt = lt.with_heading(hdg as f32);
+                    if let Some(hdg) = loc.get("heading").and_then(serde_json::Value::as_f64) {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let heading = hdg as f32;
+                        lt = lt.with_heading(heading);
                     }
-                    if let Some(sat) = loc.get("satellites").and_then(|v| v.as_u64()) {
-                        lt.satellites = sat as u8;
+                    if let Some(sat) = loc.get("satellites").and_then(serde_json::Value::as_u64) {
+                        lt.satellites = u8::try_from(sat).unwrap_or(0);
                     }
-                    if let Some(fix) = loc.get("fix").and_then(|v| v.as_u64()) {
-                        lt.fix_type = fix as u8;
+                    if let Some(fix) = loc.get("fix").and_then(serde_json::Value::as_u64) {
+                        lt.fix_type = u8::try_from(fix).unwrap_or(0);
                     }
                     telem = telem.with_location(lt);
                 }
 
                 Ok(telem)
             }
-            Response::Error(e) => bail!("Device error: {}", e),
-            _ => bail!("Unexpected response to TELEMETRY"),
+            Response::Error(e) => bail!("Device error: {e}"),
+            Response::Ok(_) => bail!("Unexpected OK response to TELEMETRY"),
         }
     }
 
     /// Receive a raw packet (waits for incoming packet).
     pub async fn recv_packet(&mut self, timeout: Duration) -> Result<Option<Vec<u8>>> {
         // Use read_response with custom timeout
-        let line = match self.port.read_line_timeout(timeout).await? {
-            Some(line) => line,
-            None => return Ok(None),
+        let Some(line) = self.port.read_line_timeout(timeout).await? else {
+            return Ok(None);
         };
 
         // Check if it's a packet
@@ -575,7 +682,11 @@ impl Protocol {
             let mut buf = vec![0u8; len];
             let mut read = 0;
             while read < len {
-                if let Some(n) = self.port.read_timeout(&mut buf[read..], CMD_TIMEOUT).await? {
+                if let Some(n) = self
+                    .port
+                    .read_timeout(&mut buf[read..], CMD_TIMEOUT)
+                    .await?
+                {
                     read += n;
                 } else {
                     bail!("Timeout reading packet data");
@@ -587,7 +698,6 @@ impl Protocol {
             Ok(None)
         }
     }
-
 }
 
 /// Monitor event types.

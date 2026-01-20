@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
 
 use crate::device::MeshEvent;
-use crate::protocol::{Protocol, MonitorEvent};
+use crate::protocol::{MonitorEvent, Protocol};
 use crate::serial::SerialPort;
 
 /// Message log entry.
@@ -49,7 +49,7 @@ struct App {
     input: String,
     /// Cursor position
     cursor: usize,
-    /// Neighbors map (node_hash -> display info)
+    /// Neighbors map (`node_hash` -> display info)
     neighbors: HashMap<u8, NeighborDisplay>,
     /// Device name
     device_name: String,
@@ -88,12 +88,12 @@ impl App {
     }
 
     fn add_received(&mut self, from: &str, text: &str, rssi: i16) {
-        let content = format!("{} ({}dB): {}", from, rssi, text);
+        let content = format!("{from} ({rssi}dB): {text}");
         self.add_message(content, Style::default().fg(Color::Green));
     }
 
     fn add_sent(&mut self, text: &str) {
-        let content = format!("You: {}", text);
+        let content = format!("You: {text}");
         self.add_message(content, Style::default().fg(Color::Yellow));
     }
 
@@ -102,15 +102,20 @@ impl App {
     }
 
     fn update_neighbor(&mut self, node_hash: u8, name: Option<String>, rssi: i16) {
-        let display_name = name.unwrap_or_else(|| format!("0x{:02x}", node_hash));
-        self.neighbors.insert(node_hash, NeighborDisplay {
-            name: display_name,
-            rssi,
-            last_seen: std::time::Instant::now(),
-        });
+        let display_name = name.unwrap_or_else(|| format!("0x{node_hash:02x}"));
+        self.neighbors.insert(
+            node_hash,
+            NeighborDisplay {
+                name: display_name,
+                rssi,
+                last_seen: std::time::Instant::now(),
+            },
+        );
 
         // Remove stale neighbors (not seen in 5 minutes)
-        let cutoff = std::time::Instant::now() - std::time::Duration::from_secs(300);
+        let cutoff = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(300))
+            .unwrap();
         self.neighbors.retain(|_, v| v.last_seen > cutoff);
     }
 }
@@ -123,7 +128,10 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
 
     // Get device info
     let info = protocol.get_info().await?;
-    let device_name = info.name.clone().unwrap_or_else(|| format!("0x{:02x}", info.node_hash));
+    let device_name = info
+        .name
+        .clone()
+        .unwrap_or_else(|| format!("0x{:02x}", info.node_hash));
 
     // Set up terminal
     enable_raw_mode()?;
@@ -139,7 +147,9 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
         info.name.as_deref().unwrap_or("device"),
         port
     ));
-    app.lock().unwrap().add_info("Type a message and press Enter to send. Ctrl+Q to quit.".into());
+    app.lock()
+        .unwrap()
+        .add_info("Type a message and press Enter to send. Ctrl+Q to quit.".into());
 
     // Create channels for communication
     let (tx_event, mut rx_event) = mpsc::channel::<MeshEvent>(100);
@@ -150,7 +160,10 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
     let device_task = tokio::spawn(async move {
         // Enter monitor mode and handle events
         if let Err(e) = protocol.enter_monitor_mode().await {
-            app_clone.lock().unwrap().add_error(format!("Monitor error: {}", e));
+            app_clone
+                .lock()
+                .unwrap()
+                .add_error(format!("Monitor error: {e}"));
             return;
         }
 
@@ -177,7 +190,7 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
                         }
                         Ok(None) => {}
                         Err(e) => {
-                            app_clone.lock().unwrap().add_error(format!("Read error: {}", e));
+                            app_clone.lock().unwrap().add_error(format!("Read error: {e}"));
                             break;
                         }
                     }
@@ -187,7 +200,7 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
                     match cmd {
                         Some(msg) => {
                             if let Err(e) = protocol.send_broadcast(&msg).await {
-                                app_clone.lock().unwrap().add_error(format!("Send error: {}", e));
+                                app_clone.lock().unwrap().add_error(format!("Send error: {e}"));
                             }
                         }
                         None => break,
@@ -217,6 +230,7 @@ pub async fn run(port: &str, baud: u32) -> Result<()> {
     result
 }
 
+#[allow(clippy::too_many_lines)]
 async fn run_ui_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: Arc<Mutex<App>>,
@@ -234,17 +248,26 @@ async fn run_ui_loop(
         while let Ok(event) = rx_event.try_recv() {
             let mut app = app.lock().unwrap();
             match event {
-                MeshEvent::Message { from, to, text, rssi } => {
+                MeshEvent::Message {
+                    from,
+                    to,
+                    text,
+                    rssi,
+                } => {
                     let dest = to.as_deref().unwrap_or("all");
-                    app.add_received(&from, &format!("[->{}] {}", dest, text), rssi);
+                    app.add_received(&from, &format!("[->{dest}] {text}"), rssi);
                 }
-                MeshEvent::Advertisement { node_hash, rssi, name } => {
+                MeshEvent::Advertisement {
+                    node_hash,
+                    rssi,
+                    name,
+                } => {
                     app.update_neighbor(node_hash, name.clone(), rssi);
-                    let display_name = name.unwrap_or_else(|| format!("0x{:02x}", node_hash));
-                    app.add_info(format!("ADV: {} ({}dB)", display_name, rssi));
+                    let display_name = name.unwrap_or_else(|| format!("0x{node_hash:02x}"));
+                    app.add_info(format!("ADV: {display_name} ({rssi}dB)"));
                 }
                 MeshEvent::Ack { from } => {
-                    app.add_info(format!("ACK from {}", from));
+                    app.add_info(format!("ACK from {from}"));
                 }
                 MeshEvent::Error { message } => {
                     app.add_error(message);
@@ -264,14 +287,14 @@ async fn run_ui_loop(
                 if key.code == KeyCode::Enter {
                     let msg = {
                         let mut app = app.lock().unwrap();
-                        if !app.input.is_empty() {
+                        if app.input.is_empty() {
+                            None
+                        } else {
                             let msg = app.input.clone();
                             app.add_sent(&msg);
                             app.input.clear();
                             app.cursor = 0;
                             Some(msg)
-                        } else {
-                            None
                         }
                     }; // Lock dropped here
 
@@ -283,10 +306,9 @@ async fn run_ui_loop(
                     let mut app = app.lock().unwrap();
 
                     match key.code {
-                        KeyCode::Char('q') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                            app.should_quit = true;
-                        }
-                        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                        KeyCode::Char('q' | 'c')
+                            if key.modifiers.contains(KeyModifiers::CONTROL) =>
+                        {
                             app.should_quit = true;
                         }
                         KeyCode::Char(c) => {
@@ -344,9 +366,16 @@ fn draw_ui(f: &mut Frame, app: &App) {
 
     // Header
     let neighbor_count = app.neighbors.len();
-    let header_text = format!(" meshgrid - {} | {} neighbors ", app.device_name, neighbor_count);
+    let header_text = format!(
+        " meshgrid - {} | {} neighbors ",
+        app.device_name, neighbor_count
+    );
     let header = Paragraph::new(header_text)
-        .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
+        .style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
         .block(Block::default().borders(Borders::ALL));
     f.render_widget(header, main_chunks[0]);
 
@@ -378,8 +407,8 @@ fn draw_ui(f: &mut Frame, app: &App) {
         })
         .collect();
 
-    let messages_list = List::new(messages)
-        .block(Block::default().title(" Messages ").borders(Borders::ALL));
+    let messages_list =
+        List::new(messages).block(Block::default().title(" Messages ").borders(Borders::ALL));
     f.render_widget(messages_list, content_chunks[0]);
 
     // Neighbors panel
@@ -392,7 +421,7 @@ fn draw_ui(f: &mut Frame, app: &App) {
         .map(|(_, info)| {
             let age_secs = info.last_seen.elapsed().as_secs();
             let age_str = if age_secs < 60 {
-                format!("{}s", age_secs)
+                format!("{age_secs}s")
             } else {
                 format!("{}m", age_secs / 60)
             };
@@ -412,7 +441,7 @@ fn draw_ui(f: &mut Frame, app: &App) {
                 ),
                 Span::raw(&info.name),
                 Span::styled(
-                    format!(" ({})", age_str),
+                    format!(" ({age_str})"),
                     Style::default().fg(Color::DarkGray),
                 ),
             ]);
@@ -427,12 +456,16 @@ fn draw_ui(f: &mut Frame, app: &App) {
     // Input
     let input = Paragraph::new(app.input.as_str())
         .style(Style::default())
-        .block(Block::default().title(" Send (Enter) | Ctrl+Q quit ").borders(Borders::ALL));
+        .block(
+            Block::default()
+                .title(" Send (Enter) | Ctrl+Q quit ")
+                .borders(Borders::ALL),
+        );
     f.render_widget(input, main_chunks[2]);
 
     // Set cursor position
     f.set_cursor(
-        main_chunks[2].x + app.cursor as u16 + 1,
+        main_chunks[2].x + u16::try_from(app.cursor).unwrap_or(0) + 1,
         main_chunks[2].y + 1,
     );
 }

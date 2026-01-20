@@ -25,13 +25,13 @@ impl Device {
     pub async fn authenticate(&mut self, pin: &str) -> Result<()> {
         use crate::protocol::Response;
 
-        let cmd = format!("AUTH {}", pin);
+        let cmd = format!("AUTH {pin}");
         let response = self.protocol.command(&cmd).await?;
 
         match response {
             Response::Ok(_) => Ok(()),
-            Response::Error(msg) => anyhow::bail!("Authentication failed: {}", msg),
-            _ => anyhow::bail!("Unexpected response to AUTH command"),
+            Response::Error(msg) => anyhow::bail!("Authentication failed: {msg}"),
+            Response::Json(_) => anyhow::bail!("Unexpected response to AUTH command"),
         }
     }
 
@@ -68,7 +68,7 @@ impl Device {
         self.protocol.set_name(name).await
     }
 
-    /// Set LoRa frequency.
+    /// Set `LoRa` frequency.
     pub async fn set_frequency(&mut self, freq_mhz: f32) -> Result<()> {
         self.protocol.set_frequency(freq_mhz).await
     }
@@ -87,14 +87,14 @@ impl Device {
 
     /// Set bandwidth.
     pub async fn set_bandwidth(&mut self, bandwidth_khz: f32) -> Result<()> {
-        let cmd = format!("SET BW {}", bandwidth_khz);
+        let cmd = format!("SET BW {bandwidth_khz}");
         self.protocol.command(&cmd).await?;
         Ok(())
     }
 
     /// Set spreading factor.
     pub async fn set_spreading_factor(&mut self, sf: u8) -> Result<()> {
-        let cmd = format!("SET SF {}", sf);
+        let cmd = format!("SET SF {sf}");
         self.protocol.command(&cmd).await?;
         Ok(())
     }
@@ -133,13 +133,13 @@ impl Device {
         self.protocol.reboot().await
     }
 
-    /// Send a local advertisement (ROUTE_DIRECT).
+    /// Send a local advertisement (`ROUTE_DIRECT`).
     pub async fn send_advert_local(&mut self) -> Result<()> {
         self.protocol.command("ADVERT LOCAL").await?;
         Ok(())
     }
 
-    /// Send a flood advertisement (ROUTE_FLOOD).
+    /// Send a flood advertisement (`ROUTE_FLOOD`).
     pub async fn send_advert_flood(&mut self) -> Result<()> {
         self.protocol.command("ADVERT FLOOD").await?;
         Ok(())

@@ -173,44 +173,28 @@ pub enum ConfigAction {
     Show,
 
     /// Set radio preset (EU, US, etc.)
-    Preset {
-        preset: String,
-    },
+    Preset { preset: String },
 
     /// Set node name
-    Name {
-        name: String,
-    },
+    Name { name: String },
 
     /// Set frequency (MHz)
-    Frequency {
-        freq_mhz: f32,
-    },
+    Frequency { freq_mhz: f32 },
 
     /// Set TX power (dBm)
-    Power {
-        power_dbm: i8,
-    },
+    Power { power_dbm: i8 },
 
     /// Set bandwidth (kHz)
-    Bandwidth {
-        bandwidth_khz: f32,
-    },
+    Bandwidth { bandwidth_khz: f32 },
 
     /// Set spreading factor
-    SpreadingFactor {
-        sf: u8,
-    },
+    SpreadingFactor { sf: u8 },
 
     /// Set coding rate
-    CodingRate {
-        cr: u8,
-    },
+    CodingRate { cr: u8 },
 
     /// Set preamble length
-    Preamble {
-        len: u16,
-    },
+    Preamble { len: u16 },
 }
 
 #[derive(Subcommand)]
@@ -222,9 +206,7 @@ pub enum TimeAction {
     Sync,
 
     /// Set time (YYYY-MM-DD HH:MM:SS)
-    Set {
-        time: String,
-    },
+    Set { time: String },
 }
 
 #[derive(Subcommand)]
@@ -242,15 +224,10 @@ pub enum ChannelsAction {
     List,
 
     /// Add a custom channel
-    Add {
-        name: String,
-        psk: String,
-    },
+    Add { name: String, psk: String },
 
     /// Remove a custom channel
-    Remove {
-        name: String,
-    },
+    Remove { name: String },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

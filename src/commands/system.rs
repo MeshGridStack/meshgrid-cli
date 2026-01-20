@@ -1,9 +1,9 @@
 //! System commands
 
-use anyhow::{Result, bail};
+use crate::cli::{BoardType, TimeAction};
 use crate::device::Device;
 use crate::protocol::Response;
-use crate::cli::{TimeAction, BoardType};
+use anyhow::{bail, Result};
 
 pub async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
     let mut dev = Device::connect(port, baud).await?;
@@ -24,25 +24,30 @@ pub async fn cmd_mode(port: &str, baud: u32, pin: Option<&str>, mode: &str) -> R
     let valid_modes = ["client", "repeater", "room"];
 
     if !valid_modes.contains(&mode_lower.as_str()) {
-        bail!("Invalid mode '{}'. Valid modes: client, repeater, room", mode);
+        bail!("Invalid mode '{mode}'. Valid modes: client, repeater, room");
     }
 
-    let command = format!("/mode {}", mode_lower);
+    let command = format!("/mode {mode_lower}");
     match proto.command(&command).await? {
         Response::Ok(msg) => {
             if let Some(m) = msg {
-                println!("{}", m);
+                println!("{m}");
             } else {
                 println!("Mode set to: {}", mode_lower.to_uppercase());
             }
             Ok(())
         }
-        Response::Error(e) => bail!("Failed to set mode: {}", e),
-        _ => bail!("Unexpected response to mode command"),
+        Response::Error(e) => bail!("Failed to set mode: {e}"),
+        Response::Json(_) => bail!("Unexpected response to mode command"),
     }
 }
 
-pub async fn cmd_time(port: &str, baud: u32, pin: Option<&str>, action: Option<TimeAction>) -> Result<()> {
+pub async fn cmd_time(
+    port: &str,
+    baud: u32,
+    pin: Option<&str>,
+    action: Option<TimeAction>,
+) -> Result<()> {
     use chrono::Local;
 
     let dev = super::connect_with_auth(port, baud, pin).await?;
@@ -55,58 +60,66 @@ pub async fn cmd_time(port: &str, baud: u32, pin: Option<&str>, action: Option<T
             // Query device time
             match proto.command("TIME").await? {
                 Response::Ok(msg) => {
-                    println!("{}", msg.unwrap_or_else(|| "Device time not set".to_string()));
+                    println!(
+                        "{}",
+                        msg.unwrap_or_else(|| "Device time not set".to_string())
+                    );
                     Ok(())
                 }
-                Response::Error(e) => bail!("Failed to get time: {}", e),
-                _ => bail!("Unexpected response to TIME"),
+                Response::Error(e) => bail!("Failed to get time: {e}"),
+                Response::Json(_) => bail!("Unexpected response to TIME"),
             }
         }
         TimeAction::Sync => {
             // Sync with computer's current time
             let time_str = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let command = format!("/time {}", time_str);
+            let command = format!("/time {time_str}");
             match proto.command(&command).await? {
                 Response::Ok(msg) => {
                     if let Some(m) = msg {
-                        println!("{}", m);
+                        println!("{m}");
                     } else {
-                        println!("Time synced: {}", time_str);
+                        println!("Time synced: {time_str}");
                     }
                     Ok(())
                 }
-                Response::Error(e) => bail!("Failed to sync time: {}", e),
-                _ => bail!("Unexpected response to time sync"),
+                Response::Error(e) => bail!("Failed to sync time: {e}"),
+                Response::Json(_) => bail!("Unexpected response to time sync"),
             }
         }
         TimeAction::Set { time } => {
             // Set device time to specific value
-            let command = format!("/time {}", time);
+            let command = format!("/time {time}");
             match proto.command(&command).await? {
                 Response::Ok(msg) => {
                     if let Some(m) = msg {
-                        println!("{}", m);
+                        println!("{m}");
                     } else {
-                        println!("Time set: {}", time);
+                        println!("Time set: {time}");
                     }
                     Ok(())
                 }
-                Response::Error(e) => bail!("Failed to set time: {}", e),
-                _ => bail!("Unexpected response to time set"),
+                Response::Error(e) => bail!("Failed to set time: {e}"),
+                Response::Json(_) => bail!("Unexpected response to time set"),
             }
         }
     }
 }
 
-pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeout_secs: u64) -> Result<()> {
+pub async fn cmd_debug(
+    port: &str,
+    baud: u32,
+    output_file: Option<String>,
+    timeout_secs: u64,
+) -> Result<()> {
     use crate::serial::SerialPort;
-    use std::io::Write;
     use std::fs::OpenOptions;
+    use std::io::Write;
 
     let infinite = timeout_secs == 0;
 
     if let Some(ref file) = output_file {
-        println!("Capturing debug output to: {}", file);
+        println!("Capturing debug output to: {file}");
     } else {
         println!("Streaming debug output to stdout");
     }
@@ -114,15 +127,12 @@ pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeo
     if infinite {
         println!("Running indefinitely (Press Ctrl+C to stop)\n");
     } else {
-        println!("Timeout: {} seconds\n", timeout_secs);
+        println!("Timeout: {timeout_secs} seconds\n");
     }
 
     // Open output file (unbuffered)
     let mut file_handle = if let Some(ref path) = output_file {
-        Some(OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?)
+        Some(OpenOptions::new().create(true).append(true).open(path)?)
     } else {
         None
     };
@@ -138,7 +148,10 @@ pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeo
         }
 
         // Read COBS frame with short timeout
-        match serial.read_cobs_frame_timeout(std::time::Duration::from_millis(100)).await {
+        match serial
+            .read_cobs_frame_timeout(std::time::Duration::from_millis(100))
+            .await
+        {
             Ok(Some(frame)) => {
                 // Decode frame to string
                 let text = String::from_utf8_lossy(&frame).to_string();
@@ -150,13 +163,13 @@ pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeo
                         let level = json.get("level").and_then(|v| v.as_str()).unwrap_or("INFO");
                         let msg = json.get("msg").and_then(|v| v.as_str()).unwrap_or("");
 
-                        let output_line = format!("[{}] {}\n", level, msg);
+                        let output_line = format!("[{level}] {msg}\n");
 
                         if let Some(ref mut file) = file_handle {
                             file.write_all(output_line.as_bytes())?;
-                            file.flush()?;  // Force immediate write
+                            file.flush()?; // Force immediate write
                         } else {
-                            print!("{}", output_line);
+                            print!("{output_line}");
                             std::io::stdout().flush()?;
                         }
                     }
@@ -166,7 +179,7 @@ pub async fn cmd_debug(port: &str, baud: u32, output_file: Option<String>, timeo
                 // Timeout, continue
             }
             Err(e) => {
-                eprintln!("Serial error: {}", e);
+                eprintln!("Serial error: {e}");
                 break;
             }
         }
@@ -192,31 +205,90 @@ struct UsbDeviceInfo {
 #[allow(dead_code)]
 const USB_DEVICE_MAP: &[UsbDeviceInfo] = &[
     // ESP32-S3 native USB (Heltec V3/V4, T3S3, T-Deck, Station G2, etc.)
-    UsbDeviceInfo { vid: 0x303a, pid: 0x1001, board: BoardType::HeltecV3, name: "ESP32-S3 (Heltec V3/V4, T3S3, etc.)" },
-    UsbDeviceInfo { vid: 0x303a, pid: 0x80d1, board: BoardType::HeltecV3, name: "ESP32-S3 JTAG" },
-
+    UsbDeviceInfo {
+        vid: 0x303a,
+        pid: 0x1001,
+        board: BoardType::HeltecV3,
+        name: "ESP32-S3 (Heltec V3/V4, T3S3, etc.)",
+    },
+    UsbDeviceInfo {
+        vid: 0x303a,
+        pid: 0x80d1,
+        board: BoardType::HeltecV3,
+        name: "ESP32-S3 JTAG",
+    },
     // Silicon Labs CP210x (common on many ESP32 boards)
-    UsbDeviceInfo { vid: 0x10c4, pid: 0xea60, board: BoardType::LilygoTbeam, name: "CP210x (T-Beam, T-LoRa, etc.)" },
-
+    UsbDeviceInfo {
+        vid: 0x10c4,
+        pid: 0xea60,
+        board: BoardType::LilygoTbeam,
+        name: "CP210x (T-Beam, T-LoRa, etc.)",
+    },
     // CH340/CH341 (Heltec, clones)
-    UsbDeviceInfo { vid: 0x1a86, pid: 0x7523, board: BoardType::HeltecV3, name: "CH340 (Heltec, clones)" },
-    UsbDeviceInfo { vid: 0x1a86, pid: 0x55d4, board: BoardType::HeltecV3, name: "CH9102 (Heltec V3)" },
-
+    UsbDeviceInfo {
+        vid: 0x1a86,
+        pid: 0x7523,
+        board: BoardType::HeltecV3,
+        name: "CH340 (Heltec, clones)",
+    },
+    UsbDeviceInfo {
+        vid: 0x1a86,
+        pid: 0x55d4,
+        board: BoardType::HeltecV3,
+        name: "CH9102 (Heltec V3)",
+    },
     // FTDI
-    UsbDeviceInfo { vid: 0x0403, pid: 0x6001, board: BoardType::DiyV1, name: "FTDI FT232" },
-
+    UsbDeviceInfo {
+        vid: 0x0403,
+        pid: 0x6001,
+        board: BoardType::DiyV1,
+        name: "FTDI FT232",
+    },
     // Nordic/nRF52840 (RAK, T-Echo, etc.)
-    UsbDeviceInfo { vid: 0x239a, pid: 0x8029, board: BoardType::Rak4631, name: "RAK4631 (nRF52840)" },
-    UsbDeviceInfo { vid: 0x239a, pid: 0x0029, board: BoardType::Rak4631, name: "RAK4631 Bootloader" },
-    UsbDeviceInfo { vid: 0x239a, pid: 0x80ab, board: BoardType::LilygoTecho, name: "T-Echo (nRF52840)" },
-
+    UsbDeviceInfo {
+        vid: 0x239a,
+        pid: 0x8029,
+        board: BoardType::Rak4631,
+        name: "RAK4631 (nRF52840)",
+    },
+    UsbDeviceInfo {
+        vid: 0x239a,
+        pid: 0x0029,
+        board: BoardType::Rak4631,
+        name: "RAK4631 Bootloader",
+    },
+    UsbDeviceInfo {
+        vid: 0x239a,
+        pid: 0x80ab,
+        board: BoardType::LilygoTecho,
+        name: "T-Echo (nRF52840)",
+    },
     // Seeed
-    UsbDeviceInfo { vid: 0x2886, pid: 0x802f, board: BoardType::SeeedXiaoNrf52840, name: "Seeed Xiao nRF52840" },
-    UsbDeviceInfo { vid: 0x2886, pid: 0x0052, board: BoardType::SeeedTrackerT1000e, name: "Seeed Tracker" },
-
+    UsbDeviceInfo {
+        vid: 0x2886,
+        pid: 0x802f,
+        board: BoardType::SeeedXiaoNrf52840,
+        name: "Seeed Xiao nRF52840",
+    },
+    UsbDeviceInfo {
+        vid: 0x2886,
+        pid: 0x0052,
+        board: BoardType::SeeedTrackerT1000e,
+        name: "Seeed Tracker",
+    },
     // RP2040
-    UsbDeviceInfo { vid: 0x2e8a, pid: 0x000a, board: BoardType::RpiPico, name: "Raspberry Pi Pico" },
-    UsbDeviceInfo { vid: 0x2e8a, pid: 0xf00a, board: BoardType::RpiPicoW, name: "Raspberry Pi Pico W" },
+    UsbDeviceInfo {
+        vid: 0x2e8a,
+        pid: 0x000a,
+        board: BoardType::RpiPico,
+        name: "Raspberry Pi Pico",
+    },
+    UsbDeviceInfo {
+        vid: 0x2e8a,
+        pid: 0xf00a,
+        board: BoardType::RpiPicoW,
+        name: "Raspberry Pi Pico W",
+    },
 ];
 
 const CP210X_BOARDS: &[BoardType] = &[
@@ -253,7 +325,8 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
                 let product = info.product.as_deref().unwrap_or("");
                 let manufacturer = info.manufacturer.as_deref().unwrap_or("");
 
-                let (chip_name, possible_boards): (&str, &[BoardType]) = match (info.vid, info.pid) {
+                let (chip_name, possible_boards): (&str, &[BoardType]) = match (info.vid, info.pid)
+                {
                     // ESP32-S3 native USB
                     (0x303a, _) => ("ESP32-S3 native USB", ESP32S3_BOARDS),
 
@@ -268,10 +341,16 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
                     (0x239a, _) => ("nRF52840", &[BoardType::Rak4631, BoardType::LilygoTecho]),
 
                     // Seeed
-                    (0x2886, _) => ("Seeed", &[BoardType::SeeedXiaoNrf52840, BoardType::SeeedTrackerT1000e]),
+                    (0x2886, _) => (
+                        "Seeed",
+                        &[BoardType::SeeedXiaoNrf52840, BoardType::SeeedTrackerT1000e],
+                    ),
 
                     // RP2040
-                    (0x2e8a, _) => ("RP2040", &[BoardType::RpiPico, BoardType::RpiPicoW, BoardType::Rak11310]),
+                    (0x2e8a, _) => (
+                        "RP2040",
+                        &[BoardType::RpiPico, BoardType::RpiPicoW, BoardType::Rak11310],
+                    ),
 
                     // FTDI
                     (0x0403, _) => ("FTDI", &[BoardType::DiyV1]),
@@ -280,9 +359,13 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
                 };
 
                 // Try to narrow down from product/manufacturer strings
-                let specific_board = if manufacturer.to_lowercase().contains("heltec") || product.to_lowercase().contains("heltec") {
+                let specific_board = if manufacturer.to_lowercase().contains("heltec")
+                    || product.to_lowercase().contains("heltec")
+                {
                     Some(BoardType::HeltecV3)
-                } else if product.to_lowercase().contains("t-beam") || product.to_lowercase().contains("tbeam") {
+                } else if product.to_lowercase().contains("t-beam")
+                    || product.to_lowercase().contains("tbeam")
+                {
                     Some(BoardType::LilygoTbeam)
                 } else if product.to_lowercase().contains("t-echo") {
                     Some(BoardType::LilygoTecho)
@@ -307,9 +390,16 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
     detected
 }
 
-pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bool, local: Option<&str>, detect: bool) -> Result<()> {
-    use std::process::Command;
+#[allow(clippy::too_many_lines)]
+pub async fn cmd_flash(
+    board: Option<BoardType>,
+    port: Option<&str>,
+    monitor: bool,
+    local: Option<&str>,
+    detect: bool,
+) -> Result<()> {
     use std::io::{self, Write};
+    use std::process::Command;
 
     // Detect connected devices
     let detected = detect_boards();
@@ -323,11 +413,11 @@ pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bo
         } else {
             for (port, specific, chip_name, possible) in &detected {
                 if let Some(board) = specific {
-                    println!("  {} - {:?} (confirmed)", port, board);
+                    println!("  {port} - {board:?} (confirmed)");
                 } else {
-                    println!("  {} - {} (could be one of:)", port, chip_name);
+                    println!("  {port} - {chip_name} (could be one of:)");
                     for b in *possible {
-                        println!("       - {:?}", b);
+                        println!("       - {b:?}");
                     }
                 }
                 println!();
@@ -351,17 +441,16 @@ pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bo
             let (ref detected_port, specific, ref chip_name, possible) = &detected[0];
 
             if let Some(board) = specific {
-                println!("Auto-detected: {:?} on {}\n", board, detected_port);
+                println!("Auto-detected: {board:?} on {detected_port}\n");
                 *board
             } else if possible.is_empty() {
                 bail!(
-                    "Unknown device on {}. Please specify board type:\n\
-                     meshgrid-cli flash heltec-v3",
-                    detected_port
+                    "Unknown device on {detected_port}. Please specify board type:\n\
+                     meshgrid-cli flash heltec-v3"
                 );
             } else {
                 // Show menu for user to select
-                println!("Device detected on {}: {}\n", detected_port, chip_name);
+                println!("Device detected on {detected_port}: {chip_name}\n");
                 println!("Which board is this?\n");
                 for (i, b) in possible.iter().enumerate() {
                     println!("  [{}] {:?}", i + 1, b);
@@ -409,12 +498,21 @@ pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bo
         // Heltec ESP32-S3
         BoardType::HeltecV3 => ("heltec_v3", "Heltec V3"),
         BoardType::HeltecV4 => ("heltec_v4", "Heltec V4"),
-        BoardType::HeltecWirelessStickLiteV3 => ("heltec_wireless_stick_lite_v3", "Heltec Wireless Stick Lite V3"),
+        BoardType::HeltecWirelessStickLiteV3 => (
+            "heltec_wireless_stick_lite_v3",
+            "Heltec Wireless Stick Lite V3",
+        ),
         BoardType::HeltecWirelessTracker => ("heltec_wireless_tracker", "Heltec Wireless Tracker"),
         BoardType::HeltecWirelessPaper => ("heltec_wireless_paper", "Heltec Wireless Paper"),
-        BoardType::HeltecVisionMasterT190 => ("heltec_vision_master_t190", "Heltec Vision Master T190"),
-        BoardType::HeltecVisionMasterE213 => ("heltec_vision_master_e213", "Heltec Vision Master E213"),
-        BoardType::HeltecVisionMasterE290 => ("heltec_vision_master_e290", "Heltec Vision Master E290"),
+        BoardType::HeltecVisionMasterT190 => {
+            ("heltec_vision_master_t190", "Heltec Vision Master T190")
+        }
+        BoardType::HeltecVisionMasterE213 => {
+            ("heltec_vision_master_e213", "Heltec Vision Master E213")
+        }
+        BoardType::HeltecVisionMasterE290 => {
+            ("heltec_vision_master_e290", "Heltec Vision Master E290")
+        }
         BoardType::HeltecHt62 => ("heltec_ht62", "Heltec HT62"),
         BoardType::HeltecMeshNodeT114 => ("heltec_mesh_node_t114", "Heltec Mesh Node T114"),
         BoardType::HeltecMeshPocket => ("heltec_mesh_pocket", "Heltec MeshPocket"),
@@ -455,11 +553,15 @@ pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bo
         BoardType::SeeedXiaoNrf52840 => ("seeed_xiao_nrf52840", "Seeed Xiao nRF52840"),
         BoardType::SeeedSensecapSolar => ("seeed_sensecap_solar", "Seeed SenseCAP Solar"),
         BoardType::SeeedWioTrackerL1 => ("seeed_wio_tracker_l1", "Seeed Wio Tracker L1"),
-        BoardType::SeeedWioTrackerL1Eink => ("seeed_wio_tracker_l1_eink", "Seeed Wio Tracker L1 E-Ink"),
+        BoardType::SeeedWioTrackerL1Eink => {
+            ("seeed_wio_tracker_l1_eink", "Seeed Wio Tracker L1 E-Ink")
+        }
         BoardType::SeeedWioWm1110 => ("seeed_wio_wm1110", "Seeed Wio WM1110"),
 
         // Seeed ESP32-S3
-        BoardType::SeeedSensecapIndicator => ("seeed_sensecap_indicator", "Seeed SenseCAP Indicator"),
+        BoardType::SeeedSensecapIndicator => {
+            ("seeed_sensecap_indicator", "Seeed SenseCAP Indicator")
+        }
         BoardType::SeeedXiaoEsp32s3 => ("seeed_xiao_esp32s3", "Seeed Xiao ESP32-S3"),
 
         // Elecrow
@@ -519,20 +621,26 @@ pub async fn cmd_flash(board: Option<BoardType>, port: Option<&str>, monitor: bo
             .or_else(|| {
                 let cwd = std::env::current_dir().ok()?;
                 let fw = cwd.join("../meshgrid-firmware");
-                if fw.exists() { Some(fw) } else { None }
+                if fw.exists() {
+                    Some(fw)
+                } else {
+                    None
+                }
             })
-            .ok_or_else(|| anyhow::anyhow!(
-                "Could not find meshgrid-firmware directory.\n\
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Could not find meshgrid-firmware directory.\n\
                  Use --local <path> or clone https://github.com/BetterInc/meshgrid-firmware"
-            ))?
+                )
+            })?
     };
 
     // Check for platformio.ini
     if !firmware_dir.join("platformio.ini").exists() {
-        bail!("No platformio.ini found in {:?}", firmware_dir);
+        bail!("No platformio.ini found in {}", firmware_dir.display());
     }
 
-    println!("Flashing {} firmware...\n", board_name);
+    println!("Flashing {board_name} firmware...\n");
 
     // Build PlatformIO command
     let mut pio_args = vec!["run", "-e", env_name, "-t", "upload"];

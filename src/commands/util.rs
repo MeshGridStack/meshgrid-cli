@@ -19,10 +19,10 @@ pub fn cmd_list_ports() -> Result<()> {
         if let serialport::SerialPortType::UsbPort(info) = port.port_type {
             print!("(USB");
             if let Some(manufacturer) = info.manufacturer {
-                print!(" - {}", manufacturer);
+                print!(" - {manufacturer}");
             }
             if let Some(product) = info.product {
-                print!(" {}", product);
+                print!(" {product}");
             }
             print!(")");
         }
@@ -34,14 +34,14 @@ pub fn cmd_list_ports() -> Result<()> {
 }
 
 /// Require port or auto-detect
-pub fn require_port(port: &Option<String>) -> Result<String> {
-    if let Some(p) = port.clone() {
-        return Ok(p);
+pub fn require_port(port: Option<&String>) -> Result<String> {
+    if let Some(p) = port {
+        return Ok(p.clone());
     }
 
     // Try auto-detection
     if let Some(detected) = crate::serial::detect_device()? {
-        println!("Auto-detected device: {}", detected);
+        println!("Auto-detected device: {detected}");
         return Ok(detected);
     }
 

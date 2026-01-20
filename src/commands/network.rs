@@ -1,13 +1,13 @@
 //! Network and radio commands
 
-use anyhow::Result;
-use crate::device::Device;
 use super::connect_with_auth;
+use crate::device::Device;
+use anyhow::Result;
 
 pub async fn cmd_trace(port: &str, baud: u32, pin: Option<&str>, target: &str) -> Result<()> {
     let mut dev = connect_with_auth(port, baud, pin).await?;
 
-    println!("Tracing route to {}...\n", target);
+    println!("Tracing route to {target}...\n");
 
     let trace = dev.trace(target).await?;
 
@@ -18,7 +18,13 @@ pub async fn cmd_trace(port: &str, baud: u32, pin: Option<&str>, target: &str) -
     Ok(())
 }
 
-pub async fn cmd_advert(port: &str, baud: u32, pin: Option<&str>, local_only: bool, flood_only: bool) -> Result<()> {
+pub async fn cmd_advert(
+    port: &str,
+    baud: u32,
+    pin: Option<&str>,
+    local_only: bool,
+    flood_only: bool,
+) -> Result<()> {
     let mut dev = connect_with_auth(port, baud, pin).await?;
 
     // Determine which advertisements to send
@@ -48,8 +54,7 @@ pub async fn cmd_advert(port: &str, baud: u32, pin: Option<&str>, local_only: bo
 pub async fn cmd_raw(port: &str, baud: u32, hex_data: &str) -> Result<()> {
     let mut dev = Device::connect(port, baud).await?;
 
-    let packet = hex::decode(hex_data.trim())
-        .map_err(|e| anyhow::anyhow!("Invalid hex: {}", e))?;
+    let packet = hex::decode(hex_data.trim()).map_err(|e| anyhow::anyhow!("Invalid hex: {e}"))?;
 
     println!("Sending {} bytes: {}", packet.len(), hex_data);
     dev.send_packet(&packet).await?;
@@ -61,7 +66,7 @@ pub async fn cmd_raw(port: &str, baud: u32, hex_data: &str) -> Result<()> {
 pub async fn cmd_recv(port: &str, baud: u32, timeout_secs: u64) -> Result<()> {
     let dev = Device::connect(port, baud).await?;
 
-    println!("Waiting for packets ({}s timeout, Ctrl+C to stop)...\n", timeout_secs);
+    println!("Waiting for packets ({timeout_secs}s timeout, Ctrl+C to stop)...\n");
 
     let timeout = std::time::Duration::from_secs(timeout_secs);
     let start = std::time::Instant::now();
@@ -70,7 +75,10 @@ pub async fn cmd_recv(port: &str, baud: u32, timeout_secs: u64) -> Result<()> {
     let mut proto = dev.into_protocol();
 
     while start.elapsed() < timeout {
-        if let Some(packet) = proto.recv_packet(std::time::Duration::from_millis(100)).await? {
+        if let Some(packet) = proto
+            .recv_packet(std::time::Duration::from_millis(100))
+            .await?
+        {
             print_packet(&packet);
         }
     }
@@ -85,9 +93,12 @@ fn print_packet(packet: &[u8]) {
     println!("  Hex: {}", hex::encode(packet));
 
     // Try to decode as text if it looks like ASCII
-    if packet.iter().all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace()) {
+    if packet
+        .iter()
+        .all(|&b| b.is_ascii_graphic() || b.is_ascii_whitespace())
+    {
         if let Ok(text) = std::str::from_utf8(packet) {
-            println!("  Text: \"{}\"", text);
+            println!("  Text: \"{text}\"");
         }
     }
     println!();

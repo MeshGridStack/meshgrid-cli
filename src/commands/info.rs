@@ -1,9 +1,9 @@
 //! Device information commands
 
-use anyhow::{Result, bail};
 use super::connect_with_auth;
-use crate::serial::SerialPort;
 use crate::protocol::{Protocol, Response};
+use crate::serial::SerialPort;
+use anyhow::{bail, Result};
 
 /// Show device information and configuration
 pub async fn cmd_info(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
@@ -12,11 +12,20 @@ pub async fn cmd_info(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
     let config = dev.get_config().await?;
 
     println!("Device Information:");
-    println!("  Name:       {}", info.name.unwrap_or_else(|| "<unnamed>".into()));
-    println!("  Mode:       {}", info.mode.unwrap_or_else(|| "unknown".into()));
+    println!(
+        "  Name:       {}",
+        info.name.unwrap_or_else(|| "<unnamed>".into())
+    );
+    println!(
+        "  Mode:       {}",
+        info.mode.unwrap_or_else(|| "unknown".into())
+    );
     println!("  Public Key: {}", hex::encode(info.public_key));
     println!("  Node Hash:  0x{:02x}", info.node_hash);
-    println!("  Firmware:   {}", info.firmware_version.unwrap_or_else(|| "unknown".into()));
+    println!(
+        "  Firmware:   {}",
+        info.firmware_version.unwrap_or_else(|| "unknown".into())
+    );
     println!();
     println!("Radio Configuration:");
     println!("  Frequency:  {:.3} MHz", config.freq_mhz);
@@ -30,6 +39,7 @@ pub async fn cmd_info(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
 }
 
 /// Show device statistics
+#[allow(clippy::too_many_lines)]
 pub async fn cmd_stats(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
     let dev = connect_with_auth(port, baud, pin).await?;
     let mut proto = dev.into_protocol();
@@ -46,84 +56,177 @@ pub async fn cmd_stats(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
             if let Some(hw) = json.get("hardware") {
                 println!("\n📟 Hardware:");
                 if let Some(board) = hw.get("board").and_then(|v| v.as_str()) {
-                    println!("  Board:  {}", board);
+                    println!("  Board:  {board}");
                 }
                 if let Some(chip) = hw.get("chip").and_then(|v| v.as_str()) {
-                    let mhz = hw.get("cpu_mhz").and_then(|v| v.as_u64()).unwrap_or(0);
-                    let cores = hw.get("cores").and_then(|v| v.as_u64()).unwrap_or(0);
-                    println!("  CPU:    {} @ {} MHz ({} cores)", chip, mhz, cores);
+                    let mhz = hw
+                        .get("cpu_mhz")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    let cores = hw
+                        .get("cores")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0);
+                    println!("  CPU:    {chip} @ {mhz} MHz ({cores} cores)");
                 }
             }
 
             // Memory
             if let Some(mem) = json.get("memory") {
                 println!("\n💾 Memory:");
-                let ram_used = mem.get("ram_used_kb").and_then(|v| v.as_u64()).unwrap_or(0);
-                let ram_total = mem.get("ram_total_kb").and_then(|v| v.as_u64()).unwrap_or(0);
-                let ram_pct = if ram_total > 0 { (ram_used * 100) / ram_total } else { 0 };
-                println!("  RAM:    {} / {} KB ({:.1}%)", ram_used, ram_total, ram_pct as f64);
+                let ram_used = mem
+                    .get("ram_used_kb")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let ram_total = mem
+                    .get("ram_total_kb")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let ram_pct = if ram_total > 0 {
+                    (ram_used * 100) / ram_total
+                } else {
+                    0
+                };
+                println!("  RAM:    {ram_used} / {ram_total} KB ({ram_pct}%)");
 
-                if let Some(heap) = mem.get("heap_free_kb").and_then(|v| v.as_u64()) {
-                    println!("  Heap:   {} KB free", heap);
+                if let Some(heap) = mem.get("heap_free_kb").and_then(serde_json::Value::as_u64) {
+                    println!("  Heap:   {heap} KB free");
                 }
 
-                let flash_used = mem.get("flash_used_kb").and_then(|v| v.as_u64()).unwrap_or(0);
-                let flash_total = mem.get("flash_total_kb").and_then(|v| v.as_u64()).unwrap_or(0);
-                let flash_pct = if flash_total > 0 { (flash_used * 100) / flash_total } else { 0 };
-                println!("  Flash:  {} / {} KB ({:.1}%)", flash_used, flash_total, flash_pct as f64);
+                let flash_used = mem
+                    .get("flash_used_kb")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let flash_total = mem
+                    .get("flash_total_kb")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let flash_pct = if flash_total > 0 {
+                    (flash_used * 100) / flash_total
+                } else {
+                    0
+                };
+                println!("  Flash:  {flash_used} / {flash_total} KB ({flash_pct}%)");
             }
 
             // Packets
             if let Some(packets) = json.get("packets") {
                 println!("\n📡 Packets:");
-                println!("  RX:     {}", packets.get("rx").and_then(|v| v.as_u64()).unwrap_or(0));
-                println!("  TX:     {}", packets.get("tx").and_then(|v| v.as_u64()).unwrap_or(0));
-                println!("  FWD:    {}", packets.get("fwd").and_then(|v| v.as_u64()).unwrap_or(0));
-                println!("  DROP:   {}", packets.get("dropped").and_then(|v| v.as_u64()).unwrap_or(0));
-                println!("  DUP:    {}", packets.get("duplicates").and_then(|v| v.as_u64()).unwrap_or(0));
+                println!(
+                    "  RX:     {}",
+                    packets
+                        .get("rx")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                );
+                println!(
+                    "  TX:     {}",
+                    packets
+                        .get("tx")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                );
+                println!(
+                    "  FWD:    {}",
+                    packets
+                        .get("fwd")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                );
+                println!(
+                    "  DROP:   {}",
+                    packets
+                        .get("dropped")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                );
+                println!(
+                    "  DUP:    {}",
+                    packets
+                        .get("duplicates")
+                        .and_then(serde_json::Value::as_u64)
+                        .unwrap_or(0)
+                );
             }
 
             // Neighbors
             if let Some(neighbors) = json.get("neighbors") {
-                let total = neighbors.get("total").and_then(|v| v.as_u64()).unwrap_or(0);
-                let clients = neighbors.get("clients").and_then(|v| v.as_u64()).unwrap_or(0);
-                let repeaters = neighbors.get("repeaters").and_then(|v| v.as_u64()).unwrap_or(0);
-                let rooms = neighbors.get("rooms").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("\n🔗 Neighbors: {}", total);
+                let total = neighbors
+                    .get("total")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let clients = neighbors
+                    .get("clients")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let repeaters = neighbors
+                    .get("repeaters")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let rooms = neighbors
+                    .get("rooms")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                println!("\n🔗 Neighbors: {total}");
                 if total > 0 {
-                    println!("  Clients:   {}", clients);
-                    println!("  Repeaters: {}", repeaters);
-                    println!("  Rooms:     {}", rooms);
+                    println!("  Clients:   {clients}");
+                    println!("  Repeaters: {repeaters}");
+                    println!("  Rooms:     {rooms}");
                 }
             }
 
             // Radio
             if let Some(radio) = json.get("radio") {
                 println!("\n📻 Radio:");
-                if let Some(freq) = radio.get("freq_mhz").and_then(|v| v.as_f64()) {
-                    println!("  Freq:   {:.2} MHz", freq);
+                if let Some(freq) = radio.get("freq_mhz").and_then(serde_json::Value::as_f64) {
+                    println!("  Freq:   {freq:.2} MHz");
                 }
-                if let Some(bw) = radio.get("bandwidth_khz").and_then(|v| v.as_f64()) {
-                    println!("  BW:     {:.1} kHz", bw);
+                if let Some(bw) = radio
+                    .get("bandwidth_khz")
+                    .and_then(serde_json::Value::as_f64)
+                {
+                    println!("  BW:     {bw:.1} kHz");
                 }
-                if let Some(sf) = radio.get("spreading_factor").and_then(|v| v.as_u64()) {
-                    println!("  SF:     {}", sf);
+                if let Some(sf) = radio
+                    .get("spreading_factor")
+                    .and_then(serde_json::Value::as_u64)
+                {
+                    println!("  SF:     {sf}");
                 }
-                if let Some(power) = radio.get("tx_power_dbm").and_then(|v| v.as_i64()) {
-                    println!("  Power:  {} dBm", power);
+                if let Some(power) = radio
+                    .get("tx_power_dbm")
+                    .and_then(serde_json::Value::as_i64)
+                {
+                    println!("  Power:  {power} dBm");
                 }
             }
 
             // Power
             if let Some(power) = json.get("power") {
                 println!("\n🔋 Power:");
-                let pct = power.get("battery_pct").and_then(|v| v.as_u64()).unwrap_or(0);
-                let mv = power.get("battery_mv").and_then(|v| v.as_u64()).unwrap_or(0);
-                println!("  Battery:  {}% ({:.2}V)", pct, mv as f64 / 1000.0);
+                let pct = power
+                    .get("battery_pct")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let mv = power
+                    .get("battery_mv")
+                    .and_then(serde_json::Value::as_u64)
+                    .unwrap_or(0);
+                let voltage = f64::from(u32::try_from(mv).unwrap_or(0)) / 1000.0;
+                println!("  Battery:  {pct}% ({voltage:.2}V)");
 
-                let usb = power.get("usb_power").and_then(|v| v.as_bool()).unwrap_or(false);
-                let charging = power.get("charging").and_then(|v| v.as_bool()).unwrap_or(false);
-                let sleep = power.get("sleep_enabled").and_then(|v| v.as_bool()).unwrap_or(false);
+                let usb = power
+                    .get("usb_power")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                let charging = power
+                    .get("charging")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                let sleep = power
+                    .get("sleep_enabled")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
 
                 println!("  USB:      {}", if usb { "Yes" } else { "No" });
                 println!("  Charging: {}", if charging { "Yes" } else { "No" });
@@ -133,26 +236,49 @@ pub async fn cmd_stats(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
             // Features
             if let Some(features) = json.get("features") {
                 println!("\n⚡ Optimizations:");
-                if features.get("hw_aes").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if features
+                    .get("hw_aes")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     println!("  ✓ Hardware AES-128");
                 } else {
                     println!("  ✗ Hardware AES-128 (software)");
                 }
-                if features.get("hw_sha256").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if features
+                    .get("hw_sha256")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     println!("  ✓ Hardware SHA-256");
                 } else {
                     println!("  ✗ Hardware SHA-256 (software)");
                 }
-                if features.get("priority_scheduling").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if features
+                    .get("priority_scheduling")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     println!("  ✓ Priority Scheduling");
                 }
-                if features.get("airtime_budget").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if features
+                    .get("airtime_budget")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     println!("  ✓ Airtime Budget (33%)");
                 }
-                if let Some(queue_size) = features.get("tx_queue_size").and_then(|v| v.as_u64()) {
-                    println!("  ✓ TX Queue ({} slots)", queue_size);
+                if let Some(queue_size) = features
+                    .get("tx_queue_size")
+                    .and_then(serde_json::Value::as_u64)
+                {
+                    println!("  ✓ TX Queue ({queue_size} slots)");
                 }
-                if features.get("secret_caching").and_then(|v| v.as_bool()).unwrap_or(false) {
+                if features
+                    .get("secret_caching")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false)
+                {
                     println!("  ✓ Shared Secret Caching");
                 }
             }
@@ -161,37 +287,37 @@ pub async fn cmd_stats(port: &str, baud: u32, pin: Option<&str>) -> Result<()> {
             if let Some(fw) = json.get("firmware") {
                 println!("\n🔧 Firmware:");
                 if let Some(ver) = fw.get("version").and_then(|v| v.as_str()) {
-                    println!("  Version: {}", ver);
+                    println!("  Version: {ver}");
                 }
                 if let Some(mode) = fw.get("mode").and_then(|v| v.as_str()) {
-                    println!("  Mode:    {}", mode);
+                    println!("  Mode:    {mode}");
                 }
-                if let Some(uptime) = fw.get("uptime_secs").and_then(|v| v.as_u64()) {
+                if let Some(uptime) = fw.get("uptime_secs").and_then(serde_json::Value::as_u64) {
                     let hours = uptime / 3600;
                     let mins = (uptime % 3600) / 60;
                     let secs = uptime % 60;
                     if hours > 0 {
-                        println!("  Uptime:  {}h {}m {}s", hours, mins, secs);
+                        println!("  Uptime:  {hours}h {mins}m {secs}s");
                     } else if mins > 0 {
-                        println!("  Uptime:  {}m {}s", mins, secs);
+                        println!("  Uptime:  {mins}m {secs}s");
                     } else {
-                        println!("  Uptime:  {}s", secs);
+                        println!("  Uptime:  {secs}s");
                     }
                 }
             }
 
             // Temperature
             if let Some(temp) = json.get("temperature") {
-                if let Some(cpu_temp) = temp.get("cpu_c").and_then(|v| v.as_f64()) {
-                    println!("\n🌡️  CPU Temp: {:.1}°C", cpu_temp);
+                if let Some(cpu_temp) = temp.get("cpu_c").and_then(serde_json::Value::as_f64) {
+                    println!("\n🌡️  CPU Temp: {cpu_temp:.1}°C");
                 }
             }
 
             println!();
         }
-        Response::Error(e) => bail!("Device error: {}", e),
+        Response::Error(e) => bail!("Device error: {e}"),
         Response::Ok(data) => {
-            eprintln!("DEBUG: Got OK response: {:?}", data);
+            eprintln!("DEBUG: Got OK response: {data:?}");
             bail!("Unexpected OK response to STATS (expected JSON)")
         }
     }
@@ -210,14 +336,22 @@ pub async fn cmd_neighbors(port: &str, baud: u32, pin: Option<&str>) -> Result<(
     }
 
     println!("Neighbor Table ({} nodes):\n", neighbors.len());
-    println!("  {:8} {:4} {:16} {:6} {:6} {:12} {:8}", "Hash", "Ver", "Name", "RSSI", "SNR", "Firmware", "Last Seen");
-    println!("  {:-<8} {:-<4} {:-<16} {:-<6} {:-<6} {:-<12} {:-<8}", "", "", "", "", "", "", "");
+    println!(
+        "  {:8} {:4} {:16} {:6} {:6} {:12} {:8}",
+        "Hash", "Ver", "Name", "RSSI", "SNR", "Firmware", "Last Seen"
+    );
+    println!(
+        "  {:-<8} {:-<4} {:-<16} {:-<6} {:-<6} {:-<12} {:-<8}",
+        "", "", "", "", "", "", ""
+    );
 
     for n in neighbors {
         let name = n.name.unwrap_or_else(|| "?".into());
         let firmware = n.firmware.unwrap_or_else(|| "unknown".into());
-        println!("  0x{:02x}     v{:<3} {:16} {:6} {:6} {:12} {}s ago",
-            n.node_hash, n.protocol_version, name, n.rssi, n.snr, firmware, n.last_seen_secs);
+        println!(
+            "  0x{:02x}     v{:<3} {:16} {:6} {:6} {:12} {}s ago",
+            n.node_hash, n.protocol_version, name, n.rssi, n.snr, firmware, n.last_seen_secs
+        );
     }
 
     Ok(())
@@ -241,7 +375,11 @@ pub async fn cmd_telemetry(port: &str, baud: u32, watch: bool) -> Result<()> {
         println!("================\n");
 
         if let Some(dev) = telem.device {
-            println!("Battery:     {}% ({:.2}V)", dev.battery_percent, dev.voltage());
+            println!(
+                "Battery:     {}% ({:.2}V)",
+                dev.battery_percent,
+                dev.voltage()
+            );
             println!("Charging:    {}", if dev.charging { "Yes" } else { "No" });
             println!("USB Power:   {}", if dev.usb_power { "Yes" } else { "No" });
             println!("Uptime:      {}s", dev.uptime_secs);

@@ -93,7 +93,7 @@ impl SerialPort {
             .flow_control(tokio_serial::FlowControl::None)
             .timeout(Duration::from_millis(100))
             .open_native_async()
-            .with_context(|| format!("Failed to open serial port: {}", port_name))?;
+            .with_context(|| format!("Failed to open serial port: {port_name}"))?;
 
         // ESP32-S3 native USB (ttyACM) - DON'T toggle DTR/RTS as it triggers reset!
         // The auto-reset circuit uses DTR+RTS to enter bootloader or reset.
@@ -134,7 +134,9 @@ impl SerialPort {
             // Check if we have a complete line in buffer
             if let Some(pos) = self.read_buf.iter().position(|&b| b == b'\n') {
                 let line: Vec<u8> = self.read_buf.drain(..=pos).collect();
-                let s = String::from_utf8_lossy(&line[..line.len()-1]).trim_end().to_string();
+                let s = String::from_utf8_lossy(&line[..line.len() - 1])
+                    .trim_end()
+                    .to_string();
                 return Ok(s);
             }
 
@@ -165,7 +167,11 @@ impl SerialPort {
     }
 
     /// Read raw bytes with timeout.
-    pub async fn read_timeout(&mut self, buf: &mut [u8], timeout: Duration) -> Result<Option<usize>> {
+    pub async fn read_timeout(
+        &mut self,
+        buf: &mut [u8],
+        timeout: Duration,
+    ) -> Result<Option<usize>> {
         match tokio::time::timeout(timeout, self.read(buf)).await {
             Ok(Ok(n)) => Ok(Some(n)),
             Ok(Err(e)) => Err(e),
@@ -185,9 +191,12 @@ impl SerialPort {
         let max_drain_time = Duration::from_millis(500);
 
         while start.elapsed() < max_drain_time {
-            match self.read_timeout(&mut buf, Duration::from_millis(100)).await {
-                Ok(Some(n)) if n > 0 => continue, // More data, keep draining
-                _ => break, // Timeout or error, buffer is empty
+            match self
+                .read_timeout(&mut buf, Duration::from_millis(100))
+                .await
+            {
+                Ok(Some(n)) if n > 0 => {} // More data, keep draining
+                _ => break,                // Timeout or error, buffer is empty
             }
         }
 
@@ -227,8 +236,7 @@ impl SerialPort {
         }
 
         // Decode COBS
-        cobs_decode(&encoded)
-            .ok_or_else(|| anyhow::anyhow!("Invalid COBS frame"))
+        cobs_decode(&encoded).ok_or_else(|| anyhow::anyhow!("Invalid COBS frame"))
     }
 
     /// Read a COBS frame with timeout

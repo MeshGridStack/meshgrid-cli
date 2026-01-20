@@ -87,20 +87,15 @@ pub async fn cmd_messages(port: &str, baud: u32, pin: Option<&str>, action: Opti
 
                             let lock = if decrypted { " " } else { "🔒" };
 
-                            // Calculate time ago (current Unix time - message timestamp)
-                            let current_unix_time = chrono::Local::now().timestamp() as u64;
-                            let msg_timestamp = timestamp;  // Already in seconds
+                            // Format timestamp as datetime
+                            use chrono::{Local, TimeZone};
+                            let datetime = Local.timestamp_opt(timestamp as i64, 0)
+                                .single()
+                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                                .unwrap_or_else(|| format!("invalid-ts:{}", timestamp));
 
-                            eprintln!("DEBUG: current_unix={}, msg_timestamp={}", current_unix_time, msg_timestamp);
-
-                            let ago_secs = if current_unix_time > msg_timestamp {
-                                current_unix_time - msg_timestamp
-                            } else {
-                                0  // Future message or clock skew
-                            };
-
-                            println!("  [{}s] {} from {} ({}/{protocol}): {}",
-                                     ago_secs,
+                            println!("  [{}] {} from {} ({}/{protocol}): {}",
+                                     datetime,
                                      lock,
                                      from_name,
                                      channel_str,

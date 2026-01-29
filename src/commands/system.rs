@@ -390,6 +390,81 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
     detected
 }
 
+
+/// Flash a precompiled firmware binary to an ESP32 device
+async fn flash_precompiled_binary(
+    firmware_path: &std::path::Path,
+    port: Option<&str>,
+    monitor: bool,
+) -> Result<()> {
+    use std::process::Command;
+
+    println!("Flashing merged firmware binary: {}", firmware_path.display());
+
+    // Step 1: Erase entire flash
+    println!("Step 1/2: Erasing entire flash...");
+    let mut erase_args = vec!["erase-flash"];
+
+    if let Some(p) = port {
+        erase_args.push("--port");
+        erase_args.push(p);
+    }
+
+    let status = Command::new("espflash")
+        .args(&erase_args)
+        .status()
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Failed to run espflash: {}\n\
+                 Make sure espflash is installed: cargo install espflash",
+                e
+            )
+        })?;
+
+    if !status.success() {
+        bail!("Flash erase failed");
+    }
+
+    println!("✓ Flash erased");
+
+    // Step 2: Write merged binary at 0x0
+    println!("\nStep 2/2: Writing merged binary (bootloader + partitions + app)...");
+    let mut write_args = vec!["write-bin"];
+
+    if let Some(p) = port {
+        write_args.push("--port");
+        write_args.push(p);
+    }
+
+    write_args.push("0x0");
+    write_args.push(firmware_path.to_str().unwrap());
+
+    let status = Command::new("espflash")
+        .args(&write_args)
+        .status()?;
+
+    if !status.success() {
+        bail!("espflash write failed");
+    }
+
+    println!("\n✓ Flash complete!");
+
+    // Monitor if requested
+    if monitor {
+        println!("\nStarting serial monitor...");
+        let monitor_port = port.unwrap_or("/dev/ttyUSB0");
+        let status = Command::new("espflash")
+            .args(&["monitor", "--port", monitor_port])
+            .status()?;
+
+        if !status.success() {
+            bail!("espflash monitor failed");
+        }
+    }
+
+    Ok(())
+}
+
 #[allow(clippy::too_many_lines)]
 pub async fn cmd_flash(
     board: Option<BoardType>,
@@ -397,6 +472,9 @@ pub async fn cmd_flash(
     monitor: bool,
     local: Option<&str>,
     detect: bool,
+    version: Option<&str>,
+    force_download: bool,
+    offline: bool,
 ) -> Result<()> {
     use std::io::{self, Write};
     use std::process::Command;
@@ -607,12 +685,24 @@ pub async fn cmd_flash(
         BoardType::Nrf52PromicroDiy => ("nrf52_promicro_diy", "nRF52 Pro-micro DIY"),
     };
 
-    // Find firmware directory
-    let firmware_dir = if let Some(path) = local {
-        std::path::PathBuf::from(path)
+    // Determine firmware source
+    enum FirmwareSource {
+        GitHub(String), // version
+        Local(std::path::PathBuf), // firmware_dir
+    }
+
+    let firmware_source = if let Some(v) = version {
+        // Explicit version specified - use GitHub
+        FirmwareSource::GitHub(v.to_string())
+    } else if let Some(path) = local {
+        // Explicit local path specified
+        FirmwareSource::Local(std::path::PathBuf::from(path))
     } else {
-        // Look for meshgrid-firmware as sibling directory
-        std::env::current_exe()?
+        // Auto-detect: check both GitHub and local
+        use crate::firmware::FirmwareManager;
+
+        // Check for local firmware directory
+        let local_firmware_dir = std::env::current_exe()?
             .parent()
             .and_then(|p| p.parent())
             .and_then(|p| p.parent())
@@ -626,45 +716,115 @@ pub async fn cmd_flash(
                 } else {
                     None
                 }
-            })
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Could not find meshgrid-firmware directory.\n\
-                 Use --local <path> or clone https://github.com/MeshGridStack/meshgrid-firmware"
-                )
-            })?
+            });
+
+        // Check if GitHub firmware is available
+        let github_available = if !offline {
+            let firmware_manager = FirmwareManager::new()?;
+            match firmware_manager.fetch_release("latest").await {
+                Ok(release) => Some(release.tag_name),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        // Decide based on what's available
+        match (github_available, local_firmware_dir) {
+            (Some(gh_version), Some(local_dir)) => {
+                // Both available - prompt user
+                use dialoguer::Select;
+
+                println!("Found firmware from multiple sources:");
+                let options = vec![
+                    format!("Download from GitHub (version {})", gh_version),
+                    format!("Build from local source ({})", local_dir.display()),
+                ];
+
+                let selection = Select::new()
+                    .with_prompt("Select source")
+                    .items(&options)
+                    .default(0)
+                    .interact()?;
+
+                if selection == 0 {
+                    FirmwareSource::GitHub(gh_version)
+                } else {
+                    FirmwareSource::Local(local_dir)
+                }
+            }
+            (Some(gh_version), None) => {
+                // Only GitHub available
+                println!("Using firmware from GitHub (version {})", gh_version);
+                FirmwareSource::GitHub(gh_version)
+            }
+            (None, Some(local_dir)) => {
+                // Only local available
+                println!("Using local firmware from {}", local_dir.display());
+                FirmwareSource::Local(local_dir)
+            }
+            (None, None) => {
+                bail!(
+                    "No firmware source found.\n\
+                     Options:\n\
+                     1. Download from GitHub: meshgrid-cli flash {} --version latest\n\
+                     2. Use local firmware: meshgrid-cli flash {} --local ../meshgrid-firmware\n\
+                     3. Clone firmware repo: git clone https://github.com/MeshGridStack/meshgrid-firmware",
+                    board_name,
+                    board_name
+                );
+            }
+        }
     };
 
-    // Check for platformio.ini
-    if !firmware_dir.join("platformio.ini").exists() {
-        bail!("No platformio.ini found in {}", firmware_dir.display());
+    // Flash based on firmware source
+    match firmware_source {
+        FirmwareSource::GitHub(ver) => {
+            // Download and flash precompiled binary
+            use crate::firmware::FirmwareManager;
+
+            let firmware_manager = FirmwareManager::new()?;
+            let firmware_path = firmware_manager
+                .get_firmware(env_name, &ver, force_download, offline)
+                .await?;
+
+            flash_precompiled_binary(&firmware_path, flash_port.as_deref(), monitor).await?;
+        }
+        FirmwareSource::Local(firmware_dir) => {
+            // Build and flash with PlatformIO (existing behavior)
+
+            // Check for platformio.ini
+            if !firmware_dir.join("platformio.ini").exists() {
+                bail!("No platformio.ini found in {}", firmware_dir.display());
+            }
+
+            println!("Flashing {board_name} firmware...\n");
+
+            // Build PlatformIO command
+            let mut pio_args = vec!["run", "-e", env_name, "-t", "upload"];
+
+            if monitor {
+                pio_args.push("-t");
+                pio_args.push("monitor");
+            }
+
+            if let Some(ref p) = flash_port {
+                pio_args.push("--upload-port");
+                pio_args.push(p);
+            }
+
+            let status = Command::new("pio")
+                .args(&pio_args)
+                .current_dir(&firmware_dir)
+                .status()?;
+
+            if !status.success() {
+                bail!("PlatformIO flash failed. Make sure PlatformIO is installed: pip install platformio");
+            }
+
+            println!("\n✓ Flash complete!");
+        }
     }
-
-    println!("Flashing {board_name} firmware...\n");
-
-    // Build PlatformIO command
-    let mut pio_args = vec!["run", "-e", env_name, "-t", "upload"];
-
-    if monitor {
-        pio_args.push("-t");
-        pio_args.push("monitor");
-    }
-
-    if let Some(ref p) = flash_port {
-        pio_args.push("--upload-port");
-        pio_args.push(p);
-    }
-
-    let status = Command::new("pio")
-        .args(&pio_args)
-        .current_dir(&firmware_dir)
-        .status()?;
-
-    if !status.success() {
-        bail!("PlatformIO flash failed. Make sure PlatformIO is installed: pip install platformio");
-    }
-
-    println!("\nFlash complete!");
 
     Ok(())
 }

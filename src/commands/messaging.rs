@@ -4,6 +4,8 @@ use super::connect_with_auth;
 use crate::cli::{ChannelsAction, MessagesAction};
 use crate::protocol::Response;
 use anyhow::{bail, Result};
+use sha2::{Digest, Sha256};
+use base64::{Engine as _, engine::general_purpose};
 
 /// Send a message (broadcast, direct, or channel)
 pub async fn cmd_send(
@@ -184,7 +186,24 @@ pub async fn cmd_channels(
             Response::Ok(_) => bail!("Unexpected OK response to CHANNELS"),
         },
         ChannelsAction::Add { name, psk } => {
-            let cmd = format!("CHANNEL JOIN {name} {psk}");
+            // Auto-generate PSK for hashtag channels (public channels)
+            let psk_to_use = if name.starts_with('#') {
+                // Calculate SHA256(channel_name) for public hashtag channels
+                let mut hasher = Sha256::new();
+                hasher.update(name.as_bytes());
+                let hash = hasher.finalize();
+                let encoded = general_purpose::STANDARD.encode(&hash);
+                println!("Auto-generated PSK for public hashtag channel '{}'", name);
+                encoded
+            } else {
+                // For non-hashtag channels, PSK is required
+                match psk {
+                    Some(p) => p,
+                    None => bail!("PSK is required for non-hashtag channels. Use hashtag (#) prefix for public channels."),
+                }
+            };
+
+            let cmd = format!("CHANNEL JOIN {name} {psk_to_use}");
             match proto.command(&cmd).await? {
                 Response::Ok(msg) => {
                     println!("{}", msg.unwrap_or_else(|| "Channel added".to_string()));

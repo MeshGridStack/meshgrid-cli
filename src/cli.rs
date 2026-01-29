@@ -149,6 +149,18 @@ pub enum Commands {
         /// Auto-detect board type
         #[arg(short, long)]
         detect: bool,
+
+        /// Firmware version to download from GitHub (e.g., "0.0.3" or "latest")
+        #[arg(short, long)]
+        version: Option<String>,
+
+        /// Force re-download even if cached
+        #[arg(long)]
+        force_download: bool,
+
+        /// Use cached firmware only, don't download
+        #[arg(long)]
+        offline: bool,
     },
 
     /// Capture debug output to file
@@ -224,7 +236,12 @@ pub enum ChannelsAction {
     List,
 
     /// Add a custom channel
-    Add { name: String, psk: String },
+    /// For hashtag channels (e.g., #test), PSK is auto-generated as SHA256(name)
+    /// For private channels, PSK must be provided (16 or 32 bytes, base64-encoded)
+    Add {
+        name: String,
+        psk: Option<String>,
+    },
 
     /// Remove a custom channel
     Remove { name: String },

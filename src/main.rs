@@ -6,6 +6,7 @@
 mod cli;
 mod commands;
 mod device;
+mod firmware;
 mod protocol;
 mod serial;
 mod ui;
@@ -162,9 +163,22 @@ async fn main() -> Result<()> {
             monitor,
             local,
             detect,
+            version,
+            force_download,
+            offline,
         } => {
             let port = cli.port.clone();
-            cmd_flash(board, port.as_deref(), monitor, local.as_deref(), detect).await?;
+            cmd_flash(
+                board,
+                port.as_deref(),
+                monitor,
+                local.as_deref(),
+                detect,
+                version.as_deref(),
+                force_download,
+                offline,
+            )
+            .await?;
         }
         Commands::Advert { local, flood } => {
             let port = require_port(cli.port.as_ref())?;

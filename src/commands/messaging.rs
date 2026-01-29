@@ -4,8 +4,8 @@ use super::connect_with_auth;
 use crate::cli::{ChannelsAction, MessagesAction};
 use crate::protocol::Response;
 use anyhow::{bail, Result};
+use base64::{engine::general_purpose, Engine as _};
 use sha2::{Digest, Sha256};
-use base64::{Engine as _, engine::general_purpose};
 
 /// Send a message (broadcast, direct, or channel)
 pub async fn cmd_send(

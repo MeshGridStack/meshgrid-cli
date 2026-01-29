@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -35,8 +35,7 @@ impl FirmwareManager {
     /// Create a new firmware manager
     pub fn new() -> Result<Self> {
         let cache_dir = Self::get_cache_dir()?;
-        fs::create_dir_all(&cache_dir)
-            .context("Failed to create firmware cache directory")?;
+        fs::create_dir_all(&cache_dir).context("Failed to create firmware cache directory")?;
 
         let client = Client::builder()
             .user_agent("meshgrid-cli")
@@ -48,8 +47,8 @@ impl FirmwareManager {
 
     /// Get the cache directory path
     fn get_cache_dir() -> Result<PathBuf> {
-        let cache_base = dirs::cache_dir()
-            .ok_or_else(|| anyhow!("Could not determine cache directory"))?;
+        let cache_base =
+            dirs::cache_dir().ok_or_else(|| anyhow!("Could not determine cache directory"))?;
         Ok(cache_base.join("meshgrid-cli").join("firmware"))
     }
 
@@ -129,7 +128,10 @@ impl FirmwareManager {
             request = request.header("Authorization", format!("Bearer {}", token));
         }
 
-        let response = request.send().await.context("Failed to fetch release info")?;
+        let response = request
+            .send()
+            .await
+            .context("Failed to fetch release info")?;
 
         if response.status().as_u16() == 404 {
             return Err(anyhow!(
@@ -166,8 +168,7 @@ impl FirmwareManager {
         firmware_filename: &str,
     ) -> Result<()> {
         // Create version directory
-        fs::create_dir_all(version_dir)
-            .context("Failed to create version cache directory")?;
+        fs::create_dir_all(version_dir).context("Failed to create version cache directory")?;
 
         let firmware_path = version_dir.join(firmware_filename);
         let checksum_filename = format!("{}.sha256", firmware_filename);
@@ -188,7 +189,13 @@ impl FirmwareManager {
                      The environment '{}' may not be supported in this release.",
                     firmware_filename,
                     version,
-                    release.assets.iter().map(|a| &a.name).cloned().collect::<Vec<_>>().join(", "),
+                    release
+                        .assets
+                        .iter()
+                        .map(|a| &a.name)
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     env_name
                 )
             })?;
@@ -217,8 +224,7 @@ impl FirmwareManager {
 
         // Verify checksum
         println!("Verifying SHA256 checksum...");
-        self.verify_checksum(&firmware_path, &checksum_path)
-            .await?;
+        self.verify_checksum(&firmware_path, &checksum_path).await?;
 
         println!("✓ Firmware downloaded and verified successfully");
 
@@ -246,16 +252,14 @@ impl FirmwareManager {
                 .progress_chars("#>-"),
         );
 
-        let mut file = fs::File::create(dest_path)
-            .context("Failed to create destination file")?;
+        let mut file = fs::File::create(dest_path).context("Failed to create destination file")?;
         let mut downloaded: u64 = 0;
         let mut stream = response.bytes_stream();
 
         use futures_util::StreamExt;
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.context("Failed to read download chunk")?;
-            file.write_all(&chunk)
-                .context("Failed to write to file")?;
+            file.write_all(&chunk).context("Failed to write to file")?;
             downloaded += chunk.len() as u64;
             pb.set_position(downloaded);
         }
@@ -268,8 +272,8 @@ impl FirmwareManager {
     /// Verify SHA256 checksum of firmware
     async fn verify_checksum(&self, firmware_path: &Path, checksum_path: &Path) -> Result<()> {
         // Read expected checksum from file
-        let checksum_content = fs::read_to_string(checksum_path)
-            .context("Failed to read checksum file")?;
+        let checksum_content =
+            fs::read_to_string(checksum_path).context("Failed to read checksum file")?;
         let expected_hash = checksum_content
             .split_whitespace()
             .next()
@@ -277,8 +281,7 @@ impl FirmwareManager {
             .to_lowercase();
 
         // Compute actual checksum
-        let firmware_data = fs::read(firmware_path)
-            .context("Failed to read firmware file")?;
+        let firmware_data = fs::read(firmware_path).context("Failed to read firmware file")?;
         let mut hasher = Sha256::new();
         hasher.update(&firmware_data);
         let actual_hash = format!("{:x}", hasher.finalize());
@@ -323,5 +326,4 @@ impl FirmwareManager {
         versions.sort();
         Ok(versions)
     }
-
 }

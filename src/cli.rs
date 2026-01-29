@@ -256,10 +256,7 @@ pub enum ChannelsAction {
     /// Add a custom channel
     /// For hashtag channels (e.g., #test), PSK is auto-generated as SHA256(name)
     /// For private channels, PSK must be provided (16 or 32 bytes, base64-encoded)
-    Add {
-        name: String,
-        psk: Option<String>,
-    },
+    Add { name: String, psk: Option<String> },
 
     /// Remove a custom channel
     Remove { name: String },

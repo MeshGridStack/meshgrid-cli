@@ -390,7 +390,6 @@ fn detect_boards() -> Vec<(String, Option<BoardType>, String, &'static [BoardTyp
     detected
 }
 
-
 /// Flash a precompiled firmware binary to an ESP32 device
 async fn flash_precompiled_binary(
     firmware_path: &std::path::Path,
@@ -399,7 +398,10 @@ async fn flash_precompiled_binary(
 ) -> Result<()> {
     use std::process::Command;
 
-    println!("Flashing merged firmware binary: {}", firmware_path.display());
+    println!(
+        "Flashing merged firmware binary: {}",
+        firmware_path.display()
+    );
 
     // Step 1: Erase entire flash
     println!("Step 1/2: Erasing entire flash...");
@@ -439,9 +441,7 @@ async fn flash_precompiled_binary(
     write_args.push("0x0");
     write_args.push(firmware_path.to_str().unwrap());
 
-    let status = Command::new("espflash")
-        .args(&write_args)
-        .status()?;
+    let status = Command::new("espflash").args(&write_args).status()?;
 
     if !status.success() {
         bail!("espflash write failed");
@@ -688,7 +688,7 @@ pub async fn cmd_flash(
 
     // Determine firmware source
     enum FirmwareSource {
-        GitHub(String), // version
+        GitHub(String),            // version
         Local(std::path::PathBuf), // firmware_dir
     }
 
@@ -847,36 +847,36 @@ pub async fn cmd_auth(port: &str, baud: u32, action: AuthAction) -> Result<()> {
                 Response::Json(_) => bail!("Unexpected response to AUTH"),
             }
         }
-        AuthAction::Status => {
-            match proto.command("AUTH STATUS").await? {
-                Response::Ok(msg) => {
-                    println!("{}", msg.unwrap_or_else(|| "No response".to_string()));
-                    Ok(())
-                }
-                Response::Error(e) => bail!("Failed to get status: {e}"),
-                Response::Json(_) => bail!("Unexpected response to AUTH STATUS"),
+        AuthAction::Status => match proto.command("AUTH STATUS").await? {
+            Response::Ok(msg) => {
+                println!("{}", msg.unwrap_or_else(|| "No response".to_string()));
+                Ok(())
             }
-        }
-        AuthAction::Enable => {
-            match proto.command("AUTH ENABLE").await? {
-                Response::Ok(msg) => {
-                    println!("✓ {}", msg.unwrap_or_else(|| "Serial auth enabled".to_string()));
-                    Ok(())
-                }
-                Response::Error(e) => bail!("Failed to enable: {e}"),
-                Response::Json(_) => bail!("Unexpected response to AUTH ENABLE"),
+            Response::Error(e) => bail!("Failed to get status: {e}"),
+            Response::Json(_) => bail!("Unexpected response to AUTH STATUS"),
+        },
+        AuthAction::Enable => match proto.command("AUTH ENABLE").await? {
+            Response::Ok(msg) => {
+                println!(
+                    "✓ {}",
+                    msg.unwrap_or_else(|| "Serial auth enabled".to_string())
+                );
+                Ok(())
             }
-        }
-        AuthAction::Disable => {
-            match proto.command("AUTH DISABLE").await? {
-                Response::Ok(msg) => {
-                    println!("✓ {}", msg.unwrap_or_else(|| "Serial auth disabled".to_string()));
-                    Ok(())
-                }
-                Response::Error(e) => bail!("Failed to disable: {e}"),
-                Response::Json(_) => bail!("Unexpected response to AUTH DISABLE"),
+            Response::Error(e) => bail!("Failed to enable: {e}"),
+            Response::Json(_) => bail!("Unexpected response to AUTH ENABLE"),
+        },
+        AuthAction::Disable => match proto.command("AUTH DISABLE").await? {
+            Response::Ok(msg) => {
+                println!(
+                    "✓ {}",
+                    msg.unwrap_or_else(|| "Serial auth disabled".to_string())
+                );
+                Ok(())
             }
-        }
+            Response::Error(e) => bail!("Failed to disable: {e}"),
+            Response::Json(_) => bail!("Unexpected response to AUTH DISABLE"),
+        },
     }
 }
 

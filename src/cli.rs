@@ -121,6 +121,24 @@ pub enum Commands {
     /// Rotate device identity (generate new keys)
     RotateIdentity,
 
+    /// Manage serial authentication
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+
+    /// Set serial password (4-32 characters)
+    Setpass {
+        /// New password (4-32 characters)
+        password: String,
+    },
+
+    /// Set Bluetooth PIN (6 digits)
+    Setpin {
+        /// New BLE PIN (6 digits)
+        pin: String,
+    },
+
     /// Send advertisement packets
     Advert {
         /// Send local advertisement only
@@ -245,6 +263,24 @@ pub enum ChannelsAction {
 
     /// Remove a custom channel
     Remove { name: String },
+}
+
+#[derive(Subcommand)]
+pub enum AuthAction {
+    /// Authenticate with password
+    Login {
+        /// Password for authentication
+        password: String,
+    },
+
+    /// Show BLE PIN and serial auth status
+    Status,
+
+    /// Enable serial authentication (requires password to be set)
+    Enable,
+
+    /// Disable serial authentication
+    Disable,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]

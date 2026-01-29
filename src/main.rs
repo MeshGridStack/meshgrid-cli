@@ -19,6 +19,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use cli::{Cli, Commands};
 use commands::{
     cmd_advert,
+    cmd_auth,
     cmd_channels,
     // Config commands
     cmd_config,
@@ -38,6 +39,8 @@ use commands::{
     cmd_rotate_identity,
     // Messaging commands
     cmd_send,
+    cmd_setpass,
+    cmd_setpin,
     cmd_stats,
     cmd_telemetry,
     cmd_time,
@@ -187,6 +190,18 @@ async fn main() -> Result<()> {
         Commands::RotateIdentity => {
             let port = require_port(cli.port.as_ref())?;
             cmd_rotate_identity(&port, cli.baud, cli.pin.as_deref()).await?;
+        }
+        Commands::Auth { action } => {
+            let port = require_port(cli.port.as_ref())?;
+            cmd_auth(&port, cli.baud, action).await?;
+        }
+        Commands::Setpass { password } => {
+            let port = require_port(cli.port.as_ref())?;
+            cmd_setpass(&port, cli.baud, &password).await?;
+        }
+        Commands::Setpin { pin } => {
+            let port = require_port(cli.port.as_ref())?;
+            cmd_setpin(&port, cli.baud, &pin).await?;
         }
         Commands::Debug { output, timeout } => {
             let port = require_port(cli.port.as_ref())?;

@@ -192,7 +192,7 @@ pub async fn cmd_channels(
                 let mut hasher = Sha256::new();
                 hasher.update(name.as_bytes());
                 let hash = hasher.finalize();
-                let encoded = general_purpose::STANDARD.encode(&hash);
+                let encoded = general_purpose::STANDARD.encode(hash);
                 println!("Auto-generated PSK for public hashtag channel '{}'", name);
                 encoded
             } else {

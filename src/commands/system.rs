@@ -1,6 +1,6 @@
 //! System commands
 
-use crate::cli::{BoardType, TimeAction};
+use crate::cli::{AuthAction, BoardType, TimeAction};
 use crate::device::Device;
 use crate::protocol::Response;
 use anyhow::{bail, Result};
@@ -454,7 +454,7 @@ async fn flash_precompiled_binary(
         println!("\nStarting serial monitor...");
         let monitor_port = port.unwrap_or("/dev/ttyUSB0");
         let status = Command::new("espflash")
-            .args(&["monitor", "--port", monitor_port])
+            .args(["monitor", "--port", monitor_port])
             .status()?;
 
         if !status.success() {
@@ -466,6 +466,7 @@ async fn flash_precompiled_binary(
 }
 
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_arguments)]
 pub async fn cmd_flash(
     board: Option<BoardType>,
     port: Option<&str>,
@@ -827,4 +828,86 @@ pub async fn cmd_flash(
     }
 
     Ok(())
+}
+
+/// Manage serial authentication
+pub async fn cmd_auth(port: &str, baud: u32, action: AuthAction) -> Result<()> {
+    let dev = Device::connect(port, baud).await?;
+    let mut proto = dev.into_protocol();
+
+    match action {
+        AuthAction::Login { password } => {
+            let command = format!("AUTH {password}");
+            match proto.command(&command).await? {
+                Response::Ok(_) => {
+                    println!("✓ Authenticated successfully");
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Authentication failed: {e}"),
+                Response::Json(_) => bail!("Unexpected response to AUTH"),
+            }
+        }
+        AuthAction::Status => {
+            match proto.command("AUTH STATUS").await? {
+                Response::Ok(msg) => {
+                    println!("{}", msg.unwrap_or_else(|| "No response".to_string()));
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to get status: {e}"),
+                Response::Json(_) => bail!("Unexpected response to AUTH STATUS"),
+            }
+        }
+        AuthAction::Enable => {
+            match proto.command("AUTH ENABLE").await? {
+                Response::Ok(msg) => {
+                    println!("✓ {}", msg.unwrap_or_else(|| "Serial auth enabled".to_string()));
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to enable: {e}"),
+                Response::Json(_) => bail!("Unexpected response to AUTH ENABLE"),
+            }
+        }
+        AuthAction::Disable => {
+            match proto.command("AUTH DISABLE").await? {
+                Response::Ok(msg) => {
+                    println!("✓ {}", msg.unwrap_or_else(|| "Serial auth disabled".to_string()));
+                    Ok(())
+                }
+                Response::Error(e) => bail!("Failed to disable: {e}"),
+                Response::Json(_) => bail!("Unexpected response to AUTH DISABLE"),
+            }
+        }
+    }
+}
+
+/// Set serial password
+pub async fn cmd_setpass(port: &str, baud: u32, password: &str) -> Result<()> {
+    let dev = Device::connect(port, baud).await?;
+    let mut proto = dev.into_protocol();
+
+    let command = format!("SETPASS {password}");
+    match proto.command(&command).await? {
+        Response::Ok(msg) => {
+            println!("✓ {}", msg.unwrap_or_else(|| "Password set".to_string()));
+            Ok(())
+        }
+        Response::Error(e) => bail!("Failed to set password: {e}"),
+        Response::Json(_) => bail!("Unexpected response to SETPASS"),
+    }
+}
+
+/// Set Bluetooth PIN
+pub async fn cmd_setpin(port: &str, baud: u32, pin: &str) -> Result<()> {
+    let dev = Device::connect(port, baud).await?;
+    let mut proto = dev.into_protocol();
+
+    let command = format!("SETPIN {pin}");
+    match proto.command(&command).await? {
+        Response::Ok(msg) => {
+            println!("✓ {}", msg.unwrap_or_else(|| "BLE PIN set".to_string()));
+            Ok(())
+        }
+        Response::Error(e) => bail!("Failed to set PIN: {e}"),
+        Response::Json(_) => bail!("Unexpected response to SETPIN"),
+    }
 }

@@ -4,6 +4,7 @@ use crate::cli::{AuthAction, BoardType, TimeAction};
 use crate::device::Device;
 use crate::protocol::Response;
 use anyhow::{bail, Result};
+use clap::ValueEnum;
 
 pub async fn cmd_reboot(port: &str, baud: u32) -> Result<()> {
     let mut dev = Device::connect(port, baud).await?;
@@ -307,8 +308,6 @@ const CH340_BOARDS: &[BoardType] = &[
 ];
 
 const ESP32S3_BOARDS: &[BoardType] = &[
-    BoardType::HeltecV3,
-    BoardType::HeltecV4,
     BoardType::LilygoT3s3,
     BoardType::LilygoTbeamSupreme,
     BoardType::LilygoTdeck,
@@ -492,11 +491,13 @@ pub async fn cmd_flash(
         } else {
             for (port, specific, chip_name, possible) in &detected {
                 if let Some(board) = specific {
-                    println!("  {port} - {board:?} (confirmed)");
+                    let board_name = board.to_possible_value().unwrap().get_name().to_string();
+                    println!("  {port} - {board_name} (confirmed)");
                 } else {
                     println!("  {port} - {chip_name} (could be one of:)");
                     for b in *possible {
-                        println!("       - {b:?}");
+                        let board_name = b.to_possible_value().unwrap().get_name().to_string();
+                        println!("       - {board_name}");
                     }
                 }
                 println!();
@@ -520,7 +521,8 @@ pub async fn cmd_flash(
             let (ref detected_port, specific, ref chip_name, possible) = &detected[0];
 
             if let Some(board) = specific {
-                println!("Auto-detected: {board:?} on {detected_port}\n");
+                let board_name = board.to_possible_value().unwrap().get_name().to_string();
+                println!("Auto-detected: {board_name} on {detected_port}\n");
                 *board
             } else if possible.is_empty() {
                 bail!(
@@ -532,7 +534,8 @@ pub async fn cmd_flash(
                 println!("Device detected on {detected_port}: {chip_name}\n");
                 println!("Which board is this?\n");
                 for (i, b) in possible.iter().enumerate() {
-                    println!("  [{}] {:?}", i + 1, b);
+                    let board_name = b.to_possible_value().unwrap().get_name().to_string();
+                    println!("  [{}] {}", i + 1, board_name);
                 }
                 println!();
                 print!("Enter number (1-{}): ", possible.len());
@@ -551,7 +554,8 @@ pub async fn cmd_flash(
             println!("Multiple devices detected:\n");
             for (i, (port, specific, chip_name, _)) in detected.iter().enumerate() {
                 if let Some(board) = specific {
-                    println!("  [{}] {} - {:?}", i + 1, port, board);
+                    let board_name = board.to_possible_value().unwrap().get_name().to_string();
+                    println!("  [{}] {} - {}", i + 1, port, board_name);
                 } else {
                     println!("  [{}] {} - {}", i + 1, port, chip_name);
                 }
@@ -736,14 +740,16 @@ pub async fn cmd_flash(
                 // Both available - prompt user
                 use dialoguer::Select;
 
-                println!("Found firmware from multiple sources:");
+                println!("\nFound firmware from multiple sources:");
+                println!("Use arrow keys ↑/↓ to select, then press Enter\n");
+
                 let options = vec![
                     format!("Download from GitHub (version {})", gh_version),
                     format!("Build from local source ({})", local_dir.display()),
                 ];
 
                 let selection = Select::new()
-                    .with_prompt("Select source")
+                    .with_prompt("Select firmware source")
                     .items(&options)
                     .default(0)
                     .interact()?;

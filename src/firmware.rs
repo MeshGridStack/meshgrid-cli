@@ -213,20 +213,20 @@ impl FirmwareManager {
             })?;
 
         // Download firmware binary with progress bar
-        println!("Downloading {}...", firmware_filename);
+        println!("\nDownloading {}...", firmware_filename);
         self.download_file(&firmware_asset.browser_download_url, &firmware_path)
             .await?;
 
         // Download checksum file
-        println!("Downloading {}...", checksum_filename);
         self.download_file(&checksum_asset.browser_download_url, &checksum_path)
             .await?;
 
         // Verify checksum
-        println!("Verifying SHA256 checksum...");
+        print!("Verifying integrity... ");
         self.verify_checksum(&firmware_path, &checksum_path).await?;
+        println!("✓");
 
-        println!("✓ Firmware downloaded and verified successfully");
+        println!("\n✓ Firmware ready to flash");
 
         Ok(())
     }
@@ -247,9 +247,9 @@ impl FirmwareManager {
         let pb = ProgressBar::new(total_size);
         pb.set_style(
             ProgressStyle::default_bar()
-                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+                .template("  {spinner:.green} [{bar:40.cyan/blue}] {bytes}/{total_bytes} {percent}% - {eta}")
                 .unwrap()
-                .progress_chars("#>-"),
+                .progress_chars("█▓░"),
         );
 
         let mut file = fs::File::create(dest_path).context("Failed to create destination file")?;
@@ -264,7 +264,7 @@ impl FirmwareManager {
             pb.set_position(downloaded);
         }
 
-        pb.finish_with_message("Downloaded");
+        pb.finish_with_message("✓ Download complete");
 
         Ok(())
     }

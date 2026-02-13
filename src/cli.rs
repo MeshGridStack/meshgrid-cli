@@ -153,7 +153,7 @@ pub enum Commands {
     /// Flash firmware to device
     Flash {
         /// Board type
-        #[arg(short, long, value_enum)]
+        #[arg(short = 'B', long, value_enum)]
         board: Option<BoardType>,
 
         /// Monitor serial output after flashing
@@ -169,7 +169,7 @@ pub enum Commands {
         detect: bool,
 
         /// Firmware version to download from GitHub (e.g., "0.0.3" or "latest")
-        #[arg(short, long)]
+        #[arg(short = 'V', long)]
         version: Option<String>,
 
         /// Force re-download even if cached
